@@ -1,0 +1,5 @@
+*.pyc
+*.npy
+checkpoint/
+data*
+output/
