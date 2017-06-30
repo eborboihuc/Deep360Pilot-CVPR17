@@ -19,8 +19,6 @@ def video_base(Agent, vid_domain, vid_name):
 
     total_loss = 0.0
     total_deltaloss = 0.0
-    total_regloss = 0.0
-    #totalFrNum = 0
     iou = 0.0
     acc = 0.0
     vel_diff = 0.0
@@ -33,6 +31,7 @@ def video_base(Agent, vid_domain, vid_name):
 
     # calc n_clips
     n_clips = len(glob(os.path.join(FEATURE_PATH, 'roisavg*.npy')))
+    assert n_clips > 0, "There is no feature file at {}".format(FEATURE_PATH)
     print n_clips
 
     # n_clips - 1 since we drop last batch which may contain null data.
@@ -64,15 +63,15 @@ def video_base(Agent, vid_domain, vid_name):
             # load test_data
             inclusion_batch = np.zeros((1, 50, Agent.n_detection, 3), dtype=np.float16)
 
-            #roislist_batch = np.load(os.path.join(FEATURE_PATH, 'divide_area_pruned_boxes{:04d}.npy'.format(count)))
-            roislist_batch = np.load(os.path.join(FEATURE_PATH, 'roislist{:04d}.npy'.format(count)))
+            #box_center = np.load(os.path.join(FEATURE_PATH, 'divide_area_pruned_boxes{:04d}.npy'.format(count)))
+            box_center = np.load(os.path.join(FEATURE_PATH, 'roislist{:04d}.npy'.format(count)))
             #roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'pruned_roisavg{:04d}.npy'.format(count)))
             roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'roisavg{:04d}.npy'.format(count)))
             #inclusion_batch[0, :, :, 0] = np.load(os.path.join(FEATURE_PATH, 'avg_motion{:04d}.npy'.format(count)))
             #inclusion_batch[0, :, :, 1:] = np.load(os.path.join(FEATURE_PATH, 'avg_flow{:04d}.npy'.format(count)))
             hof_batch = np.load(os.path.join(FEATURE_PATH, 'hof{:04d}.npy'.format(count)))
 
-            roislist_batch = np.tile(np.expand_dims(roislist_batch, 0), [Agent.batch_size, 1, 1, 1])
+            box_center = np.tile(np.expand_dims(box_center, 0), [Agent.batch_size, 1, 1, 1])
             roisavg_batch = np.tile(np.expand_dims(roisavg_batch, 0), [Agent.batch_size, 1, 1, 1])
             hof_batch = np.tile(np.expand_dims(hof_batch, 0), [Agent.batch_size, 1, 1, 1])
             inclusion_batch = np.tile(inclusion_batch, [Agent.batch_size, 1, 1, 1])
@@ -80,24 +79,23 @@ def video_base(Agent, vid_domain, vid_name):
             label_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_output+1])
             one_hot_label_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_detection])
 
-            box = roislist_batch.copy()
+            box = box_center.copy()
             gt = label_batch.copy()
             
-            roislist_batch[:,:,:,0] = (roislist_batch[:,:,:,0]/Agent.W + roislist_batch[:,:,:,2]/Agent.W)/2
-            roislist_batch[:,:,:,1] = (roislist_batch[:,:,:,1]/Agent.H + roislist_batch[:,:,:,3]/Agent.H)/2
+            box_center[:,:,:,0] = (box_center[:,:,:,0]/Agent.W + box_center[:,:,:,2]/Agent.W)/2
+            box_center[:,:,:,1] = (box_center[:,:,:,1]/Agent.H + box_center[:,:,:,3]/Agent.H)/2
 
             label_batch[:,:,0] = label_batch[:,:,0]/Agent.W
             label_batch[:,:,1] = label_batch[:,:,1]/Agent.H
 
             # TODO: add data level inclusion
-            [_, loss, deltaloss, regloss, pred_out, alpha_out] = sess.run([Agent.opt, Agent.cost, Agent.delta, Agent.reg, Agent.pred, Agent.alphas], \
-                    feed_dict={Agent.x: roisavg_batch, Agent.y: one_hot_label_batch, Agent.y_loc: label_batch, \
-                            Agent.dist: roislist_batch[:,:,:,:Agent.n_output], Agent.inclusion: inclusion_batch, \
+            [_, loss, deltaloss, pred_out, alpha_out] = sess.run([Agent.opt, Agent.cost, Agent.delta, Agent.pred, Agent.alphas], \
+                    feed_dict={Agent.obj_app: roisavg_batch, Agent.y: one_hot_label_batch, Agent.y_loc: label_batch, \
+                            Agent.box_center: box_center[:,:,:,:Agent.n_output], Agent.inclusion: inclusion_batch, \
                             Agent.hof: hof_batch, Agent.keep_prob:1.0, Agent.pred_init: pred_init_value, Agent._phase: Agent.bool_two_phase})
             
             total_loss += loss/Agent.n_frames #(Agent.batch_size*Agent.n_frames)
             total_deltaloss += deltaloss/Agent.n_frames
-            total_regloss += regloss/Agent.n_frames
 
             # Feed in init value to next batch
             pred_init_value = pred_out[:,-1,:].copy()
@@ -147,7 +145,6 @@ def video_base(Agent, vid_domain, vid_name):
 
         print "Loss = {:.3f}".format(total_loss/n_clips) # 40/20, number of training/testing set
         print "DeltaLoss = {:.3f}".format(total_deltaloss/n_clips)
-        print "RegLoss = {:.3f}".format(total_regloss/n_clips)
         print "IOU = {:.3f}".format(iou/n_clips)
         print "Acc = {:.3f}".format(acc/n_clips)
         print "Velocity Diff = {:.3f}".format(vel_diff/n_clips)
@@ -160,7 +157,6 @@ def video_base(Agent, vid_domain, vid_name):
             with open(out_path + "_{}_{}_lam{}_{}_best_model".format(Agent.domain, Agent.n_detection, Agent.regress_lmbda, Agent.two_phase) + '.txt', 'w') as f:
                 f.write("Loss = {:.5f}\n".format(total_loss/n_clips))
                 f.write("DeltaLoss = {:.5f}\n".format(total_deltaloss/n_clips))
-                f.write("RegLoss = {:.5f}\n".format(total_regloss/n_clips))
                 f.write("IOU = {:.5f}\n".format(iou/n_clips))
                 f.write("Acc = {:.5f}\n".format(acc/n_clips))
                 f.write("Velocity Diff = {:.5f}\n".format(vel_diff/n_clips))

@@ -29,7 +29,6 @@ def test(Agent):
             print "Model ({}) Not Found!!!".format(Agent.restore_path)
 
 
-#def test_all(sess, num, path, x, y, y_loc, dist, inclusion, hof, keep_prob, opt, cost, delta, reg, pred, alphas, dropPr, pred_init, _phase):
 def test_all(sess, Agent, is_train):
     """ Testing whole batches of training/testing set """
     num = Agent.train_num if is_train else Agent.test_num
@@ -37,8 +36,6 @@ def test_all(sess, Agent, is_train):
     
     total_loss = 0.0
     total_deltaloss = 0.0
-    total_regloss = 0.0
-    #totalFrNum = 0
     iou = 0.0
     acc = 0.0
     vel_diff = 0.0
@@ -49,20 +46,21 @@ def test_all(sess, Agent, is_train):
     MVD = MeanVelocityDiff(W=Agent.W)
 
     for num_batch in range(1,num+1):
+        
         # load test_data
-        batch_data, batch_label, batch_y_loc, batch_dist, batch_inclusion, batch_hof, batch_img, box, gt = load_batch_data(Agent, path, num_batch, True)
+        batch_data, batch_label, batch_y_loc, batch_box_center, batch_inclusion, batch_hof, batch_img, box, gt = load_batch_data(Agent, path, num_batch, True)
+        
         # NOTE: Change this after feature changed
         gt = gt[:,:,:2]
 
-        [_, loss, deltaloss, regloss, pred_out, alpha_out] = sess.run([Agent.opt, Agent.cost, Agent.delta, Agent.reg, Agent.pred, Agent.alphas], 
-                feed_dict={Agent.x: batch_data, Agent.y: batch_label, Agent.y_loc: batch_y_loc, 
-                Agent.dist: batch_dist[:,:,:,:Agent.n_output], Agent.inclusion: batch_inclusion, 
+        [_, loss, deltaloss, pred_out, alpha_out] = sess.run([Agent.opt, Agent.cost, Agent.delta, Agent.pred, Agent.alphas], 
+                feed_dict={Agent.obj_app: batch_data, Agent.y: batch_label, Agent.y_loc: batch_y_loc, 
+                Agent.box_center: batch_box_center[:,:,:,:Agent.n_output], Agent.inclusion: batch_inclusion, 
                 Agent.hof: batch_hof, Agent.keep_prob:1.0-dropPr, 
                 Agent.pred_init: pred_init_value, Agent._phase: Agent.bool_two_phase})
         
-        total_loss += loss/Agent.n_frames #(batch_size*Agent.n_frames)
+        total_loss      += loss/Agent.n_frames #(batch_size*Agent.n_frames)
         total_deltaloss += deltaloss/Agent.n_frames
-        total_regloss += regloss/Agent.n_frames
 
         pred_out[:,:,0] = (pred_out[:,:,0]*Agent.W).astype(int)
         pred_out[:,:,1] = (pred_out[:,:,1]*Agent.H).astype(int)
@@ -108,7 +106,6 @@ def test_all(sess, Agent, is_train):
 
     print "Loss = {:.3f}".format(total_loss/num) # number of training/testing set
     print "DeltaLoss = {:.3f}".format(total_deltaloss/num)
-    print "RegLoss = {:.3f}".format(total_regloss/num)
     print "IOU = {:.3f}".format(iou/num)
     print "Acc = {:.3f}".format(acc/num)
     print "Velocity Diff = {:.3f}".format(vel_diff/num)

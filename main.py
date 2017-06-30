@@ -11,10 +11,11 @@ from train import train
 from test import test
 from demo import video_base
 
+# Usage:
 # python main.py --mode train --gpu 0 -d bmx -l 10 -b 16 -p classify --opt Adam
-# python main.py --mode test --gpu 0 -d bmx -l 10 -b 16 -p classify --model bmx_lam1_classify_best_model
-# python main.py --mode vid --model bmx_lam1_classify_best_model --gpu 0 -d bmx -l 10 -b 16 -p classify -n zZ6FlZRLvek_6
-
+# python main.py --mode test --gpu 0 -d bmx -l 10 -b 16 -p classify --model bmx_16boxes_lam10.0/bmx_lam1_classify_best_model
+# python main.py --mode vid --model bmx_16boxes_lam10.0/bmx_lam1_classify_best_model --gpu 0 -d bmx -l 10 -b 16 -p classify -n zZ6FlZRLvek_6
+# python main.py --mode pred --model parkour_16boxes_lam10.0/parkour_lam1_classify_best_model --gpu 0 -d bmx -l 10 -b 16 -p classify -n zZ6FlZRLvek_6 --data ./data2/
 
 def parse_args():
     """Parse input arguments."""

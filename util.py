@@ -72,8 +72,8 @@ def cal_accuracy(Agent, pred, gt, targetFrNum, totalFrNum):
 def load_batch_data(Agent, path, num_batch, _copy=False, _augment=False):
     """ Load batch data from path and normalize them, use copy to preserve raw data """
     
-    #data = np.load(join(path, 'pruned_roisavg/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:Agent.n_input]
-    data = np.load(join(path, 'roisavg/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:Agent.n_input]
+    data = np.load(join(path, 'pruned_roisavg/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:Agent.n_input]
+    #data = np.load(join(path, 'roisavg/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:Agent.n_input]
     
     labels = np.load(join(path, 'label/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_classes+1]
     
@@ -81,36 +81,36 @@ def load_batch_data(Agent, path, num_batch, _copy=False, _augment=False):
     #one_hot_labels = np.zeros((Agent.batch_size, Agent.n_frames, Agent.n_detection), dtype=np.float16)
     
     inclusion = np.zeros((Agent.batch_size, Agent.n_frames, Agent.n_detection, 3), dtype=np.float16)
-    #inclusion[:,:,:,0] = np.load(join(path, 'avg_motion/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection]
-    #inclusion[:,:,:,1:] = np.load(join(path, 'avg_flow/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:2]
+    inclusion[:,:,:,0] = np.load(join(path, 'avg_motion/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection]
+    inclusion[:,:,:,1:] = np.load(join(path, 'avg_flow/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:2]
     
     hof = np.load(join(path, 'hof/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:Agent.n_bin_size]
     
-    #dist = np.load(join(path, 'divide_area_pruned_boxes/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:]
-    dist = np.load(join(path, 'roislist/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:]
+    box_center = np.load(join(path, 'divide_area_pruned_boxes/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:]
+    #box_center = np.load(join(path, 'roislist/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:]
     
     #img = np.load(join(path, 'batch_clips/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size]
     img = np.zeros((Agent.batch_size), dtype=np.float16)
 
     if _augment is True:
-        data, labels, dist = augment_data(data, labels, dist)
+        data, labels, box_center = augment_data(data, labels, box_center)
 
     if _copy is True:
-        box = np.copy(dist)
+        box = np.copy(box_center)
         gt = np.copy(labels)
     else:
         box = None
         gt = None
 
-    dist[:,:,:,0] = (dist[:,:,:,0]/Agent.W + dist[:,:,:,2]/Agent.W)/2
-    dist[:,:,:,1] = (dist[:,:,:,1]/Agent.H + dist[:,:,:,3]/Agent.H)/2
+    box_center[:,:,:,0] = (box_center[:,:,:,0]/Agent.W + box_center[:,:,:,2]/Agent.W)/2
+    box_center[:,:,:,1] = (box_center[:,:,:,1]/Agent.H + box_center[:,:,:,3]/Agent.H)/2
     labels[:,:,0] = labels[:,:,0]/Agent.W
     labels[:,:,1] = labels[:,:,1]/Agent.H
     inclusion[:,:,:,1:] = inclusion[:,:,:,1:]-np.min(inclusion[:,:,:,1:])
     denomin = np.max(inclusion[:,:,:,1:]) - np.min(inclusion[:,:,:,1:])
     inclusion[:,:,:,1:] = inclusion[:,:,:,1:] / (denomin if denomin != 0 else 1.0)
 
-    return data, one_hot_labels, labels, dist, inclusion, hof, img, box, gt
+    return data, one_hot_labels, labels, box_center, inclusion, hof, img, box, gt
 
 
 def visual_gaze(Agent, img_name, gt, pred, alphas, box):

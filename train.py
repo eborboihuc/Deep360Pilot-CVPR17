@@ -54,7 +54,6 @@ def train(Agent):
             
             epoch_loss = 0.0
             delta_loss = 0.0
-            reg_loss = 0.0
             acc = 0.0
             iou = 0.0
             vel_diff = 0.0
@@ -63,14 +62,24 @@ def train(Agent):
             tStart_epoch = time.time()
             for batch in range(num):
                 
-                batch_xs, batch_ys, batch_y_loc, batch_dist, batch_inclusion, batch_hof, _, _, gt = load_batch_data(Agent, Agent.train_path, n_batchs[batch], True)
+                batch_xs, batch_ys, batch_y_loc, batch_box_center, batch_inclusion, batch_hof, _, _, gt = load_batch_data(Agent, Agent.train_path, n_batchs[batch], True)
                 
                 # Fit training using batch data
-                _, summary_out, batch_loss, deltaloss, regloss, pred_out, alpha_out, lr_out = \
-                        sess.run([Agent.opt, Agent.merged, Agent.cost, Agent.delta, Agent.reg, Agent.pred, Agent.alphas, Agent.lr], \
-                                feed_dict={Agent.x: batch_xs, Agent.y: batch_ys, Agent.y_loc: batch_y_loc, \
-                                        Agent.dist: batch_dist[:,:,:,:Agent.n_output], Agent.inclusion: batch_inclusion, \
-                                        Agent.hof: batch_hof, Agent.keep_prob: 1-Agent.trainDropPr, Agent.pred_init: pred_init_value, Agent._phase: Agent.bool_two_phase})
+                _, summary_out, batch_loss, deltaloss, pred_out, alpha_out, lr_out = sess.run(
+                        [Agent.opt, Agent.merged, Agent.cost, Agent.delta, Agent.pred, Agent.alphas, Agent.lr], 
+                        feed_dict={
+                            Agent.obj_app: batch_xs, 
+                            Agent.y: batch_ys, 
+                            Agent.y_loc: batch_y_loc, 
+                            Agent.box_center: batch_box_center[:,:,:,:Agent.n_output], 
+                            Agent.inclusion: batch_inclusion, 
+                            Agent.hof: batch_hof, 
+                            Agent.keep_prob: 1-Agent.trainDropPr, 
+                            Agent.pred_init: pred_init_value, 
+                            Agent._phase: Agent.bool_two_phase
+                        }
+                )
+                
                 writer.add_summary(summary_out, epoch*len(n_batchs)+batch)
 
                 pred_out[:,:,0] = (pred_out[:,:,0]*Agent.W).astype(int)
@@ -79,31 +88,32 @@ def train(Agent):
                 sys.stdout.flush()
                 epoch_loss += batch_loss/Agent.n_frames
                 delta_loss += deltaloss/Agent.n_frames
-                reg_loss   += regloss/Agent.n_frames
                 acc        += float(np.sum(np.logical_and(batch_ys, alpha_out))) / (Agent.batch_size*Agent.n_frames)
                 iou        += score(Agent, pred_out, gt[:,:,:2])
                 vel_diff   += MVD.batch_vel_diff(pred_out) * 0.1875 / (Agent.n_frames)
 
             # Print one epoch
-            print "Epoch: {} done. Loss: {:.3f} DeltaLoss: {:.3f} RegLoss: {:.3f}, lr: {:.3f}, IoU: {:.3f}, Acc: {:.3f}, Vel_diff: {:.3f}".format(
-                    epoch, epoch_loss/num, delta_loss/num, reg_loss/num, lr_out, iou/num, acc/num, vel_diff/num)
+            print "Epoch: {} done. Loss: {:.3f} DeltaLoss: {:.3f}, lr: {:.3f}, IoU: {:.3f}, Acc: {:.3f}, Vel_diff: {:.3f}".format(
+                    epoch, epoch_loss/num, delta_loss/num, lr_out, iou/num, acc/num, vel_diff/num)
 
             tStop_epoch = time.time()
-            print "Epoch Time Cost:", round(tStop_epoch - tStart_epoch,2), "s"
+            print "Epoch Time Cost: {}s".format(round(tStop_epoch - tStart_epoch,2))
             sys.stdout.flush()
             
             if iou/num > best_iou and Agent.bool_two_phase:
                 best_iou = iou/num
-                # save lam1_classify_best_model
+                
+                # Save lam1_classify_best_model
                 saver.save(sess, os.path.join(Agent.save_path, '{}_lam{}_{}_best_model'.format(Agent.domain, 1, Agent.two_phase)))
-                Agent.Best_score={'epoch':epoch, 'loss':epoch_loss/num, 'smooth_loss':delta_loss/num, 'reg_loss':reg_loss/num, \
+                Agent.Best_score={'epoch':epoch, 'loss':epoch_loss/num, 'smooth_loss':delta_loss/num, \
                             'lr':lr_out, 'iou':iou/num, 'acc':acc/num, 'vel_diff':vel_diff/num}
             
             if vel_diff/num < best_vel and Agent.bool_two_phase:
                 best_vel = vel_diff/num
-                # save lam{}_regress_model
+                
+                # Save lam{}_regress_model
                 saver.save(sess, os.path.join(Agent.save_path, '{}_lam{}_{}_best_model'.format(Agent.domain, Agent.regress_lmbda, Agent.two_phase)))
-                Agent.Best_score={'epoch':epoch, 'loss':epoch_loss/num, 'smooth_loss':delta_loss/num, 'reg_loss':reg_loss/num, \
+                Agent.Best_score={'epoch':epoch, 'loss':epoch_loss/num, 'smooth_loss':delta_loss/num, \
                             'lr':lr_out, 'iou':iou/num, 'acc':acc/num, 'vel_diff':vel_diff/num}
                 
             if (epoch+1) % Agent.display_step == 0:
@@ -121,9 +131,11 @@ def train(Agent):
         np.save(
             os.path.join(Agent.save_path, 'logs', '{}_lam{}_{}_best_model_log'.format(
                     Agent.domain, 
-                    1 if Agent.bool_two_phase == 1 else Agent.regress_lmbda, 
-                    Agent.two_phase), 
-            Agent.Best_score)
+                    1 if Agent.bool_two_phase else Agent.regress_lmbda, 
+                    Agent.two_phase)
+            ), 
+            Agent.Best_score
+        )
         saver.save(sess, os.path.join(Agent.save_path, 'final_model'))
 
 

@@ -26,8 +26,9 @@ class Deep360Pilot(object):
         self.img_path           = os.path.join(flag.data_path, 'frame_{}'.format(flag.domain))
         self.train_path         = os.path.join(flag.data_path, '{}_{}boxes'.format(flag.domain, flag.boxnum), 'train')
         self.test_path          = os.path.join(flag.data_path, '{}_{}boxes'.format(flag.domain, flag.boxnum), 'test')
-        self.save_path          = os.path.join(flag.root_path, 'checkpoint', '{}_{}boxes_lam{}'.format(flag.domain, flag.boxnum, flag.lam))
-        self.restore_path       = os.path.join(self.save_path, flag.model_path) if flag.model_path else None
+        self.save_path          = os.path.join(flag.root_path, 'checkpoint', 
+                '{}_{}boxes_lam{}'.format(flag.domain, flag.boxnum, flag.lam))
+        self.restore_path       = os.path.join(flag.root_path, 'checkpoint', flag.model_path) if flag.model_path else None
     
         # Batch Number
         self.train_num          = len(glob(os.path.join(self.train_path, 'roisavg/*.npy')))
@@ -46,7 +47,6 @@ class Deep360Pilot(object):
         self.init_learning_rate = 1e-5
         self.trainDropPr        = 0.5
         self.testDropPr         = 0.0
-        self.reg_strength       = 1.0
         self.classify_lmbda     = 1.0
         self.regress_lmbda      = flag.lam
 
@@ -69,7 +69,6 @@ class Deep360Pilot(object):
         self.Best_score         = { 'epoch': 0, 
                                     'loss' : -1.0, 
                                     'smooth_loss': -1.0, 
-                                    'reg_loss': -1.0, 
                                     'lr': self.init_learning_rate, 
                                     'iou': -1.0, 
                                     'acc': -1.0, 
@@ -93,15 +92,15 @@ class Deep360Pilot(object):
         self.global_step = tf.contrib.framework.get_or_create_global_step()
         
         # tf Graph input
-        self.x          = tf.placeholder("float", [self.batch_size, self.n_frames , self.n_detection, self.n_input])
+        self.obj_app    = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_input])
         self.y          = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection])
         self.y_loc      = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_output+1])
-        self.dist       = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_output])
+        self.box_center = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_output])
         self.inclusion  = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, 3])
         self.hof        = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_bin_size])
         self.keep_prob  = tf.placeholder("float")
         self.pred_init  = tf.placeholder("float", [self.batch_size, self.n_output])
-        self._phase     = tf.placeholder(tf.bool, name="trainphase")   
+        self._phase     = tf.placeholder("bool", name="trainphase")   
         
         # Initial prediction
         self.prev_pred_init = tf.convert_to_tensor(self.pred_init)
@@ -110,21 +109,18 @@ class Deep360Pilot(object):
         self.init_vars()
 
         # RNN 
-        self.cost, self.delta, self.reg, self.pred, self.alphas = self.RNN()
+        self.cost, self.delta, self.pred, self.alphas = self.RNN()
         
-        # Learning rate decay
-        self.lr = tf.train.exponential_decay(self.init_learning_rate, self.global_step,
-                                            5*(11*self.train_num + self.test_num), 0.9, staircase=True) # decay every 50 epoch(5*(11+1))
-
         # Define optimizer
-        self.opt = self.optimizer(learning_rate=self.lr, name=self.opt_method).minimize(self.cost, global_step=self.global_step)
+        self.opt = self.optimizer(name=self.opt_method).minimize(self.cost, global_step=self.global_step)
 
         # show on the tensorborad
-        loss_summary = tf.summary.scalar("Loss",self.cost)
+        loss_summary = tf.summary.scalar("Loss", self.cost)
         self.merged = tf.summary.merge_all()
         
 
     def init_vars(self):
+        
         # Define self.weights
         self.weights = {
             'em_att': tf.get_variable('em_att', shape=[self.n_input, self.n_hidden], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
@@ -163,34 +159,42 @@ class Deep360Pilot(object):
 
 
     def optimizer(self, *args, **kwargs):
-        if kwargs['name'] == 'Adam':
-            return tf.train.AdamOptimizer(*args, **kwargs)
-        elif kwargs['name'] == 'Adadelta':
-            return tf.train.AdadeltaOptimizer(*args, **kwargs)
-        elif kwargs['name'] == 'RMSProp':
-            return tf.train.RMSPropOptimizer(momentum=0.1, *args, **kwargs)
-        else:
-            return tf.train.MomentumOptimizer(momentum=0.1, use_nesterov=True, *args, **kwargs)
+        """ Define Optimizer to use """
 
+        # Learning rate decays every 50 epochs
+        if kwargs['name'] in ['Adam', 'Adadelta']:
+            self.lr = tf.constant(self.init_learning_rate)
+        else:
+            self.lr = tf.train.exponential_decay(self.init_learning_rate, self.global_step,
+                                            5*(11*self.train_num + self.test_num), 0.9, staircase=True)
+
+        # Change optimizer base on name
+        if kwargs['name'] == 'Adam':
+            return tf.train.AdamOptimizer(learning_rate=self.lr, *args, **kwargs)
+        elif kwargs['name'] == 'Adadelta':
+            return tf.train.AdadeltaOptimizer(learning_rate=self.lr, *args, **kwargs)
+        elif kwargs['name'] == 'RMSProp':
+            return tf.train.RMSPropOptimizer(momentum=0.1, learning_rate=self.lr, *args, **kwargs)
+        elif kwargs['name'] == 'Momentum':
+            return tf.train.MomentumOptimizer(momentum=0.1, use_nesterov=True, learning_rate=self.lr, *args, **kwargs)
+        else:
+            raise IOError("Optimizer {} not Found.".format(kwargs['name']))
 
     def RNN(self):
-        """Define Selector RNN and Regressor RNN here
-        """
+        """ Define Selector RNN and Regressor RNN here """
 
         prev_pred       = self.prev_pred_init
+        reg_hidden      = tf.zeros([self.batch_size, self.n_output])
         prev_velocity   = tf.zeros([self.batch_size, self.n_output])
         h_prev          = tf.ones([self.batch_size, self.n_hidden]) / 2.0
-        reg_hidden      = tf.zeros([self.batch_size, self.n_output])
-        
-        cost            = 0.0
+        Cost            = 0.0
         delta_loss      = 0.0
-        reg_loss        = 0.0
 
         for i in range(self.n_frames):
-            temp_dist = tf.transpose(self.dist[:,i,:,:],[1,0,2]) # n_det x b x self.n_output
             
             # Input
-            X = tf.transpose(self.x[:,i,:,:], [1, 0, 2])  # permute n_dets and self.batch_size (n_det x b x h)
+            cur_box_center = tf.transpose(self.box_center[:,i,:,:],[1,0,2]) # n_det x b x self.n_output
+            X = tf.transpose(self.obj_app[:,i,:,:], [1, 0, 2])  # permute n_dets and self.batch_size (n_det x b x h)
             
             # Object embedded
             X = tf.reshape(X, [-1, self.n_input]) # (n_dets*self.batch_size, self.n_input)
@@ -198,7 +202,7 @@ class Deep360Pilot(object):
             X = tf.reshape(X,[self.n_detection,self.batch_size,self.n_hidden]) # n_det x b x h
             
             prev_loc = tf.tile(tf.expand_dims(prev_pred, 0), [self.n_detection, 1, 1]) # n_det x b x self.n_output
-            X = tf.concat(2, [X, tf_dist_360(prev_loc, temp_dist, 2)]) # n_det x b x h+2
+            X = tf.concat(2, [X, tf_dist_360(prev_loc, cur_box_center, 2)]) # n_det x b x h+2
 
             # Object attention
             brcst_w = tf.tile(tf.expand_dims(self.weights['att_w'], 0), [self.n_detection,1,1]) # n_det x h+4 x h+2
@@ -238,7 +242,7 @@ class Deep360Pilot(object):
             amax = tf.argmax(tf.nn.log_softmax(predpr),1) # b
             amaxDense = tf.one_hot(amax, (self.n_detection), 1.0, 0.0, 0) # self.n_detection x b
             amaxDenseBatch = tf.tile(tf.expand_dims(amaxDense,2),[1,1,self.n_output]) # self.n_detection x b x self.n_output
-            predloc = tf.reduce_sum(tf.mul(temp_dist, amaxDenseBatch), 0) # b x self.n_output
+            predloc = tf.reduce_sum(tf.mul(cur_box_center, amaxDenseBatch), 0) # b x self.n_output
             
             # Zero box location handle: Add prev_pred at where predloc is zerow
             zero_box = tf.reduce_sum(predloc, 1) # b x 1
@@ -282,9 +286,10 @@ class Deep360Pilot(object):
             l2loss = tf.reduce_mean(l2diff)
             #l2loss = tf.Print(l2loss, [l2loss], "Attention L2 Loss", summarize=10)
 
-            # Regulized by current prediction and previous ones
-            # Deminish the gap between left most and right most by function : { max(X,0.5)-X + min(X,0.5)*2*X }=={ X[X < 0.5] = 1 - X[X< 0.5]] }
-            
+            """ Regulized by current prediction and previous ones
+                Deminish the gap between left most and right most by function : 
+                { max(X,0.5)-X + min(X,0.5)*2*X }=={ X[X < 0.5] = 1 - X[X< 0.5]] }
+            """
             # Classification phase (True) or Regression phase (False)
             reg_l2diff = tf.cond(self._phase, \
                     lambda: tf_l2_dist_360(pred, prev_pred, 1), \
@@ -294,22 +299,15 @@ class Deep360Pilot(object):
             #deltaloss = tf.Print(deltaloss, [deltaloss], "Velocity Loss", summarize=10)
             delta_loss += deltaloss
 
-            # l2 loss on self.weights
-            regloss = tf.reduce_mean([tf.nn.l2_loss(self.weights[key]) for key in self.weights])
-            regloss = regloss + tf.reduce_mean([tf.nn.l2_loss(self.biases[key]) for key in self.biases])
-            reg_loss += self.reg_strength * regloss
-
-            # cost function
-            
-            # Classification phase (True) or Regression phase (False)
-            cost += tf.cond(self._phase, \
-                    lambda: loss + self.classify_lmbda * deltaloss + regloss, \
+            # Cost in Classification phase (True) or Regression phase (False)
+            Cost += tf.cond(self._phase, \
+                    lambda: loss + self.classify_lmbda * deltaloss, \
                     lambda: l2loss + self.regress_lmbda * deltaloss)
             
             # Update prediction
             prev_pred = pred
             prev_velocity = current_velocity
 
-        return cost, delta_loss, reg_loss, pred_out, alphas_out
+        return Cost, delta_loss, pred_out, alphas_out
 
 
