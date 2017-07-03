@@ -68,6 +68,7 @@ def test_all(sess, Agent, is_train):
         # NOTE: Use same scale
         ac = float(np.sum(np.logical_and(batch_label, alpha_out))) / (Agent.batch_size * Agent.n_frames)
         iu = score(Agent, pred_out, gt)
+        # convert into degree form (* 360 / 1920 / n_frames)
         vd = MVD.batch_vel_diff(pred_out) * 0.1875 / (Agent.n_frames)
         acc += ac
         iou += iu

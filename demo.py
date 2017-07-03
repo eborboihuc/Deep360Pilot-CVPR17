@@ -67,8 +67,8 @@ def video_base(Agent, vid_domain, vid_name):
             box_center = np.load(os.path.join(FEATURE_PATH, 'roislist{:04d}.npy'.format(count)))
             #roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'pruned_roisavg{:04d}.npy'.format(count)))
             roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'roisavg{:04d}.npy'.format(count)))
-            #inclusion_batch[0, :, :, 0] = np.load(os.path.join(FEATURE_PATH, 'avg_motion{:04d}.npy'.format(count)))
-            #inclusion_batch[0, :, :, 1:] = np.load(os.path.join(FEATURE_PATH, 'avg_flow{:04d}.npy'.format(count)))
+            inclusion_batch[0, :, :, 0] = np.load(os.path.join(FEATURE_PATH, 'avg_motion{:04d}.npy'.format(count)))
+            inclusion_batch[0, :, :, 1:] = np.load(os.path.join(FEATURE_PATH, 'avg_flow{:04d}.npy'.format(count)))
             hof_batch = np.load(os.path.join(FEATURE_PATH, 'hof{:04d}.npy'.format(count)))
 
             box_center = np.tile(np.expand_dims(box_center, 0), [Agent.batch_size, 1, 1, 1])
@@ -78,6 +78,8 @@ def video_base(Agent, vid_domain, vid_name):
             
             label_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_output+1])
             one_hot_label_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_detection])
+            #one_hot_label = np.load(os.path.join(FEATURE_PATH, 'onehot{:04d}.npy'.format(count)))
+            #one_hot_label_batch = np.tile(np.expand_dims(one_hot_label, 0), [Agent.batch_size, 1, 1])
 
             box = box_center.copy()
             gt = label_batch.copy()

@@ -22,7 +22,7 @@ class MeanVelocityDiff(object):
             mean_vel_diff   - Mean Velocity Difference
     """
 
-    def __init__(self, W=1920.0, FPS=15.0):
+    def __init__(self, W=1920.0, FPS=1.0):
         self.W = W
         self.FPS = FPS
 

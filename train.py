@@ -63,6 +63,9 @@ def train(Agent):
             for batch in range(num):
                 
                 batch_xs, batch_ys, batch_y_loc, batch_box_center, batch_inclusion, batch_hof, _, _, gt = load_batch_data(Agent, Agent.train_path, n_batchs[batch], True)
+        
+                # NOTE: Change this after feature changed
+                gt = gt[:,:,:2]
                 
                 # Fit training using batch data
                 _, summary_out, batch_loss, deltaloss, pred_out, alpha_out, lr_out = sess.run(
@@ -89,7 +92,8 @@ def train(Agent):
                 epoch_loss += batch_loss/Agent.n_frames
                 delta_loss += deltaloss/Agent.n_frames
                 acc        += float(np.sum(np.logical_and(batch_ys, alpha_out))) / (Agent.batch_size*Agent.n_frames)
-                iou        += score(Agent, pred_out, gt[:,:,:2])
+                iou        += score(Agent, pred_out, gt)
+                # convert into degree form (* 360 / 1920 / n_frames)
                 vel_diff   += MVD.batch_vel_diff(pred_out) * 0.1875 / (Agent.n_frames)
 
             # Print one epoch

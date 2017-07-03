@@ -27,14 +27,14 @@ class Deep360Pilot(object):
         self.train_path         = os.path.join(flag.data_path, '{}_{}boxes'.format(flag.domain, flag.boxnum), 'train')
         self.test_path          = os.path.join(flag.data_path, '{}_{}boxes'.format(flag.domain, flag.boxnum), 'test')
         self.save_path          = os.path.join(flag.root_path, 'checkpoint', 
-                '{}_{}boxes_lam{}'.format(flag.domain, flag.boxnum, flag.lam))
+                                            '{}_{}boxes_lam{}'.format(flag.domain, flag.boxnum, flag.lam))
         self.restore_path       = os.path.join(flag.root_path, 'checkpoint', flag.model_path) if flag.model_path else None
     
         # Batch Number
-        self.train_num          = len(glob(os.path.join(self.train_path, 'roisavg/*.npy')))
+        self.train_num          = len(glob(os.path.join(self.train_path, 'roisavg/*.npy'))) 
         self.test_num           = len(glob(os.path.join(self.test_path, 'roisavg/*.npy')))
-        assert self.train_num   > 0, "Found 0 files in {}".format(self.train_path)
-        assert self.test_num    > 0, "Found 0 files in {}".format(self.test_path)
+        assert self.train_num   > 0 or flag.mode not in ['train', 'test'], "Found 0 files in {}".format(self.train_path)
+        assert self.test_num    > 0 or flag.mode not in ['train', 'test'], "Found 0 files in {}".format(self.test_path)
 
         # Flag
         self.Debug              = flag.debug
@@ -195,6 +195,7 @@ class Deep360Pilot(object):
             # Input
             cur_box_center = tf.transpose(self.box_center[:,i,:,:],[1,0,2]) # n_det x b x self.n_output
             X = tf.transpose(self.obj_app[:,i,:,:], [1, 0, 2])  # permute n_dets and self.batch_size (n_det x b x h)
+            #X = tf.transpose(self.obj_app[:,i,:,:] * tf.expand_dims(self.inclusion[:,i,:,0], 2), [1, 0, 2])  # permute n_dets and self.batch_size (n_det x b x h)
             
             # Object embedded
             X = tf.reshape(X, [-1, self.n_input]) # (n_dets*self.batch_size, self.n_input)
@@ -222,7 +223,7 @@ class Deep360Pilot(object):
             # Soft attention : alphas
             alphas = tf.div(e, tf.tile(tf.expand_dims(denomin,0), [self.n_detection, 1])) # n_det x b
             
-            attention_list = tf.mul(tf.tile(tf.expand_dims(alphas,2),[1, 1, self.n_hidden+2]),X) # n_det x b x h+2
+            attention_list = tf.mul(tf.tile(tf.expand_dims(alphas,2),[1, 1, self.n_hidden+2]), X) # n_det x b x h+2
             attention = tf.batch_matmul(attention_list, tf.tile(tf.expand_dims(self.weights['onebox'], 0), [self.n_detection, 1, 1])) # n_det x b x h
             attention = tf.reshape(tf.transpose(attention, [1, 0, 2]), [self.batch_size, -1])
             

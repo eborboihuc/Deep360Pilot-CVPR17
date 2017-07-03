@@ -36,9 +36,12 @@ class MeanOverlap(object):
         self.W = W
         self.H = H
 
-        # We use 4:3 as normal FOV format, and this give a 282.5 * 350 pixels in 1920 * 960 Pano.
+        # We use 4:3 as normal FOV format in VR player, and this give a 282.5 * 350 pixels in 1920 * 960 Pano.
         self.WIDTH = self.deg_to_pix(W, FOV)
-        self.HEIGHT = 0.75 * self.WIDTH
+        #self.HEIGHT = 0.75 * self.WIDTH
+        
+        # We use 1:1 as normal FOV format in VR headset, and this give a 350 * 350 pixels in 1920 * 960 Pano.
+        self.HEIGHT = self.WIDTH
 
     def deg_to_pix(self, width, degree):
         return width*degree / 360.0
