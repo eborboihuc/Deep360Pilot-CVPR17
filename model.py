@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os
 import pdb
 import tensorflow as tf
 
 rnn = tf.nn.rnn_cell #from tensorflow.contrib import rnn
 from tensorflow.contrib.layers import xavier_initializer, l2_regularizer
 from glob import glob
+from os.path import join
 from ops import *
 
 class Deep360Pilot(object):
@@ -23,16 +23,16 @@ class Deep360Pilot(object):
         self.domain             = flag.domain
         self.root_path          = flag.root_path
         self.data_path          = flag.data_path
-        self.img_path           = os.path.join(flag.data_path, 'frame_{}'.format(flag.domain))
-        self.train_path         = os.path.join(flag.data_path, '{}_{}boxes'.format(flag.domain, flag.boxnum), 'train')
-        self.test_path          = os.path.join(flag.data_path, '{}_{}boxes'.format(flag.domain, flag.boxnum), 'test')
-        self.save_path          = os.path.join(flag.root_path, 'checkpoint', 
+        self.img_path           = join(flag.data_path, 'frame_{}'.format(flag.domain))
+        self.train_path         = join(flag.data_path, '{}_{}boxes'.format(flag.domain, flag.boxnum), 'train')
+        self.test_path          = join(flag.data_path, '{}_{}boxes'.format(flag.domain, flag.boxnum), 'test')
+        self.save_path          = join(flag.root_path, 'checkpoint', 
                                             '{}_{}boxes_lam{}'.format(flag.domain, flag.boxnum, flag.lam))
-        self.restore_path       = os.path.join(flag.root_path, 'checkpoint', flag.model_path) if flag.model_path else None
+        self.restore_path       = join(flag.root_path, 'checkpoint', flag.model_path) if flag.model_path else None
     
         # Batch Number
-        self.train_num          = len(glob(os.path.join(self.train_path, 'roisavg/*.npy'))) 
-        self.test_num           = len(glob(os.path.join(self.test_path, 'roisavg/*.npy')))
+        self.train_num          = len(glob(join(self.train_path, 'roisavg/*.npy'))) 
+        self.test_num           = len(glob(join(self.test_path, 'roisavg/*.npy')))
         assert self.train_num   > 0 or flag.mode not in ['train', 'test'], "Found 0 files in {}".format(self.train_path)
         assert self.test_num    > 0 or flag.mode not in ['train', 'test'], "Found 0 files in {}".format(self.test_path)
 
@@ -43,12 +43,12 @@ class Deep360Pilot(object):
         self._save_pred         = flag.mode == 'pred'
 
         # Parameters
-        self.l2_beta            = 1e-2
-        self.init_learning_rate = 1e-5
-        self.trainDropPr        = 0.5
+        self.l2_beta            = 1.0
         self.testDropPr         = 0.0
+        self.trainDropPr        = 0.5
         self.classify_lmbda     = 1.0
         self.regress_lmbda      = flag.lam
+        self.init_learning_rate = 1e-5
 
         # Network Parameters
         self.W                  = 1920.0
@@ -56,14 +56,13 @@ class Deep360Pilot(object):
         self.n_epochs           = 400
         self.batch_size         = 10
         self.display_step       = 10
-        self.number_of_layers   = 3
         self.n_input            = 512 # Conv5
-        self.n_detection        = flag.boxnum
         self.n_hidden           = 256 # Num of features in hidden layer
-        self.n_onebox           = self.n_hidden/self.n_detection
         self.n_output           = 2 # u and v
         self.n_frames           = 50
         self.n_bin_size         = 12
+        self.n_detection        = flag.boxnum
+        self.n_onebox           = self.n_hidden/self.n_detection
 
         # Best loader
         self.Best_score         = { 'epoch': 0, 
@@ -109,8 +108,8 @@ class Deep360Pilot(object):
         self.init_vars()
 
         # RNN 
-        self.cost, self.delta, self.pred, self.alphas = self.RNN()
-        
+        self.RNN()
+
         # Define optimizer
         self.opt = self.optimizer(name=self.opt_method).minimize(self.cost, global_step=self.global_step)
 
@@ -180,6 +179,7 @@ class Deep360Pilot(object):
         else:
             raise IOError("Optimizer {} not Found.".format(kwargs['name']))
 
+
     def RNN(self):
         """ Define Selector RNN and Regressor RNN here """
 
@@ -187,62 +187,58 @@ class Deep360Pilot(object):
         reg_hidden      = tf.zeros([self.batch_size, self.n_output])
         prev_velocity   = tf.zeros([self.batch_size, self.n_output])
         h_prev          = tf.ones([self.batch_size, self.n_hidden]) / 2.0
-        Cost            = 0.0
-        delta_loss      = 0.0
+        
+        predpr_array    = tf.TensorArray(dtype=tf.float32, size=self.n_frames)
+        pred_array      = tf.TensorArray(dtype=tf.float32, size=self.n_frames)
+        
+        
+        def recurrent_body(i, predpr_array, pred_array, prev_pred, prev_velocity, rnn_output, rnn_state, reg_hidden, cost, deltaloss):
 
-        for i in range(self.n_frames):
-            
             # Input
-            cur_box_center = tf.transpose(self.box_center[:,i,:,:],[1,0,2]) # n_det x b x self.n_output
-            X = tf.transpose(self.obj_app[:,i,:,:], [1, 0, 2])  # permute n_dets and self.batch_size (n_det x b x h)
+            cur_box_center = tf.transpose(self.box_center[:, i, :, :],[1, 0, 2]) # n_det x b x self.n_output
+            X = tf.transpose(self.obj_app[:, i, :, :], [1, 0, 2])  # permute n_dets and self.batch_size (n_det x b x h)
             #X = tf.transpose(self.obj_app[:,i,:,:] * tf.expand_dims(self.inclusion[:,i,:,0], 2), [1, 0, 2])  # permute n_dets and self.batch_size (n_det x b x h)
             
             # Object embedded
             X = tf.reshape(X, [-1, self.n_input]) # (n_dets*self.batch_size, self.n_input)
             X = tf.matmul(X, self.weights['em_att']) + self.biases['em_att'] # (n_det x b) x h
-            X = tf.reshape(X,[self.n_detection,self.batch_size,self.n_hidden]) # n_det x b x h
+            X = tf.reshape(X, [self.n_detection, self.batch_size, self.n_hidden]) # n_det x b x h
             
             prev_loc = tf.tile(tf.expand_dims(prev_pred, 0), [self.n_detection, 1, 1]) # n_det x b x self.n_output
             X = tf.concat(2, [X, tf_dist_360(prev_loc, cur_box_center, 2)]) # n_det x b x h+2
 
             # Object attention
-            brcst_w = tf.tile(tf.expand_dims(self.weights['att_w'], 0), [self.n_detection,1,1]) # n_det x h+4 x h+2
-            image_part = tf.batch_matmul(X, tf.tile(tf.expand_dims(self.weights['att_ua'], 0), [self.n_detection,1,1])) + self.biases['att_ba'] # n_det x b x h+2
-            e = tf.tanh(tf.matmul(h_prev, self.weights['att_wa'])+image_part) # n_det x b x h+2
+            brcst_w = tf.tile(tf.expand_dims(self.weights['att_w'], 0), [self.n_detection, 1, 1]) # n_det x h+4 x h+2
+            image_part = tf.batch_matmul(X, tf.tile(tf.expand_dims(self.weights['att_ua'], 0), [self.n_detection, 1, 1])) + self.biases['att_ba'] # n_det x b x h+2
+            e = tf.tanh(tf.matmul(rnn_output, self.weights['att_wa']) + image_part) # n_det x b x h+2
             
             # TODO:motion attention
-            inclusion_emb = tf.expand_dims(tf.transpose(self.inclusion[:,i,:,0], [1,0]),2)
-            inclusion_emb = tf.tile(inclusion_emb, [1,1,2]) # n_det x b x 2
-            e = tf.concat(2,[e, inclusion_emb]) # n_det x b x h+4
-            e = tf.exp(tf.reduce_sum(tf.batch_matmul(e,brcst_w),2)) # n_det x b
+            inclusion_emb = tf.expand_dims(tf.transpose(self.inclusion[:, i, :, 0], [1, 0]), 2)
+            inclusion_emb = tf.tile(inclusion_emb, [1, 1, 2]) # n_det x b x 2
+            e = tf.concat(2, [e, inclusion_emb]) # n_det x b x h+4
+            e = tf.exp(tf.reduce_sum(tf.batch_matmul(e, brcst_w), 2)) # n_det x b
             
             # Eliminate the empty box
             denomin = tf.reduce_sum(e,0) # b
             denomin = denomin + tf.to_float(tf.equal(denomin, 0)) # avoid nan
 
             # Soft attention : alphas
-            alphas = tf.div(e, tf.tile(tf.expand_dims(denomin,0), [self.n_detection, 1])) # n_det x b
+            alphas = tf.div(e, tf.tile(tf.expand_dims(denomin, 0), [self.n_detection, 1])) # n_det x b
             
-            attention_list = tf.mul(tf.tile(tf.expand_dims(alphas,2),[1, 1, self.n_hidden+2]), X) # n_det x b x h+2
+            attention_list = tf.mul(tf.tile(tf.expand_dims(alphas, 2),[1, 1, self.n_hidden+2]), X) # n_det x b x h+2
             attention = tf.batch_matmul(attention_list, tf.tile(tf.expand_dims(self.weights['onebox'], 0), [self.n_detection, 1, 1])) # n_det x b x h
             attention = tf.reshape(tf.transpose(attention, [1, 0, 2]), [self.batch_size, -1])
             
-            # Concat frame & object
-            # Reuse variables
-            if i > 0 :  tf.get_variable_scope().reuse_variables()       
-            with tf.variable_scope("LSTM") as vs:
-                outputs, self.rnn_state = self.rnn_cell(attention, self.rnn_state)
-            
-            # Update hidden layer
-            h_prev = outputs
+            # Selector RNN
+            rnn_output, rnn_state = self.rnn_cell(attention, rnn_state)
             
             # Gaze prediction
-            predpr = tf.matmul(outputs, self.weights['gaze']) + self.biases['gaze'] # b x self.n_detection
+            predpr = tf.matmul(rnn_output, self.weights['gaze']) + self.biases['gaze'] # b x self.n_detection
 
             # Gaze location
-            amax = tf.argmax(tf.nn.log_softmax(predpr),1) # b
-            amaxDense = tf.one_hot(amax, (self.n_detection), 1.0, 0.0, 0) # self.n_detection x b
-            amaxDenseBatch = tf.tile(tf.expand_dims(amaxDense,2),[1,1,self.n_output]) # self.n_detection x b x self.n_output
+            amax = tf.argmax(tf.nn.log_softmax(predpr), 1) # b
+            amaxDense = tf.one_hot(amax, self.n_detection, 1.0, 0.0, 0) # self.n_detection x b
+            amaxDenseBatch = tf.tile(tf.expand_dims(amaxDense, 2), [1, 1, self.n_output]) # self.n_detection x b x self.n_output
             predloc = tf.reduce_sum(tf.mul(cur_box_center, amaxDenseBatch), 0) # b x self.n_output
             
             # Zero box location handle: Add prev_pred at where predloc is zerow
@@ -255,9 +251,6 @@ class Deep360Pilot(object):
             reg_output = tf.matmul(pred_diff, self.regressor_w['rnn_velo']) + tf.matmul(reg_hidden, self.regressor_w['rnn_h'])
             pred = prev_pred + tf.matmul(reg_output, self.regressor_w['pred']) + self.regressor_b['pred']
             
-            # Update Hidden
-            reg_hidden = reg_output
-
             # Get velocity
             current_velocity = tf_dist_360_classify(prev_pred, pred, 1) # b x self.n_output
 
@@ -271,21 +264,17 @@ class Deep360Pilot(object):
             pred = tf.concat(1,[xpart, ypart]) # b x self.n_output
 
             # Send out pred and one_hot
-            if i == 0:
-                pred_out = tf.expand_dims(pred,1) # b x 1 x self.n_output
-                alphas_out = tf.expand_dims(tf.transpose(amaxDense, [1,0]),1) # b x 1 x n_detect
-            else:
-                pred_out = tf.concat(1,[pred_out, tf.expand_dims(pred,1)]) # b x n_frame x self.n_detection 
-                alphas_out = tf.concat(1,[alphas_out, tf.expand_dims(tf.transpose(amaxDense,[1,0]),1)]) # b x n_frame x self.n_detection
+            pred_array = pred_array.write(i, pred)
+            #predpr_array = predpr_array.write(i, predpr)
+            predpr_array = predpr_array.write(i, amaxDense)
 
             # Pred to one hot
-            loss = tf.nn.softmax_cross_entropy_with_logits(predpr, self.y[:,i,:])
+            loss = tf.nn.softmax_cross_entropy_with_logits(predpr, self.y[:, i, :])
             loss = tf.reduce_mean(loss)
 
             # Pred to y_loc
-            l2diff = tf_l2_dist_360(pred, self.y_loc[:,i,:2], 1) # b x n_output -> b x 1
+            l2diff = tf_l2_dist_360(pred, self.y_loc[:, i, :2], 1) # b x n_output -> b x 1
             l2loss = tf.reduce_mean(l2diff)
-            #l2loss = tf.Print(l2loss, [l2loss], "Attention L2 Loss", summarize=10)
 
             """ Regulized by current prediction and previous ones
                 Deminish the gap between left most and right most by function : 
@@ -297,18 +286,35 @@ class Deep360Pilot(object):
                     lambda: tf_l2_dist_360(current_velocity, prev_velocity, 1)) # b x n_output -> b x 1
             
             deltaloss = tf.reduce_mean(reg_l2diff)
-            #deltaloss = tf.Print(deltaloss, [deltaloss], "Velocity Loss", summarize=10)
-            delta_loss += deltaloss
 
             # Cost in Classification phase (True) or Regression phase (False)
-            Cost += tf.cond(self._phase, \
+            cost += tf.cond(self._phase, \
                     lambda: loss + self.classify_lmbda * deltaloss, \
                     lambda: l2loss + self.regress_lmbda * deltaloss)
             
-            # Update prediction
-            prev_pred = pred
-            prev_velocity = current_velocity
+            return i+1, predpr_array, pred_array, pred, current_velocity, rnn_output, rnn_state, reg_hidden, cost, deltaloss
 
-        return Cost, delta_loss, pred_out, alphas_out
+
+        # While loop over self.n_frames
+        _, self.predpr, self.pred, cur_pred, cur_vel, rnn_output, rnn_state, reg_state, self.cost, self.delta = tf.while_loop(
+                cond = lambda i, *_: i < self.n_frames,
+                body = recurrent_body, # i, predpr, pred, cur_vel, rnn_output, rnn_state, reg_hidden, total_loss, delta_loss
+                loop_vars = (
+                    tf.constant(0, tf.int32), 
+                    predpr_array, 
+                    pred_array,
+                    prev_pred, 
+                    prev_velocity, 
+                    self.rnn_state[1], 
+                    self.rnn_state, 
+                    reg_hidden,
+                    tf.constant(0, tf.float32),
+                    tf.constant(0, tf.float32)
+                    )
+        )
+        
+        #self.alphas = tf.transpose(self.predpr.pack(), [1, 0, 2]) # predpr
+        self.alphas = tf.transpose(self.predpr.pack(), [2, 0, 1]) # amaxDense
+        self.pred = tf.transpose(self.pred.pack(), [1, 0, 2])
 
 

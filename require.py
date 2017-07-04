@@ -8,3 +8,7 @@ if os.path.isdir('./data') == False:
     os.mkdir('./data')
 if os.path.isdir('./checkpoint') == False:
     os.mkdir('./checkpoint')
+
+
+
+

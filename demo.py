@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import tensorflow as tf
 import os
+import tensorflow as tf
+from util import *
 from glob import glob
 from model import Deep360Pilot
-from util import *
 from MeanVelocityDiff import MeanVelocityDiff
 
 
@@ -17,13 +17,14 @@ def video_base(Agent, vid_domain, vid_name):
     FEATURE_PATH = os.path.join(Agent.data_path, 'feature_{}_{}boxes'.format(vid_domain, Agent.n_detection), vid_name)
     print FEATURE_PATH
 
-    total_loss = 0.0
-    total_deltaloss = 0.0
     iou = 0.0
     acc = 0.0
     vel_diff = 0.0
-    total_pred = None
+    total_loss = 0.0
+    total_deltaloss = 0.0
     
+    # Init prediction
+    total_pred = None
     pred_init_value = np.ones([Agent.batch_size, Agent.n_output])/2
     
     # Init MVD
@@ -32,7 +33,7 @@ def video_base(Agent, vid_domain, vid_name):
     # calc n_clips
     n_clips = len(glob(os.path.join(FEATURE_PATH, 'roisavg*.npy')))
     assert n_clips > 0, "There is no feature file at {}".format(FEATURE_PATH)
-    print n_clips
+    print "Found {} clips in {}".format(n_clips, FEATURE_PATH)
 
     # n_clips - 1 since we drop last batch which may contain null data.
     n_clips = n_clips - 1
@@ -117,9 +118,9 @@ def video_base(Agent, vid_domain, vid_name):
             vel_diff += vd
             print "Acc: {:.3f}, IoU: {:.3f}, Vel_diff:{:.3f}".format(ac, iu, vd)
             print "Corr: {}".format(np.sum(np.logical_and(one_hot_label_batch, alpha_out)))
-            print np.where(one_hot_label_batch[0])
+            print "One Hot: ", np.where(one_hot_label_batch[0])
             print "----------------------------------------------------------------"
-            print np.where(alpha_out[0])
+            print "Prediction: ", np.where(alpha_out[0])
 
             if total_pred is None:
                 total_pred = pred_out[0].copy()

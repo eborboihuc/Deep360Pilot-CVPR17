@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import tensorflow as tf
 import os
+import tensorflow as tf
 from util import *
 from MeanVelocityDiff import MeanVelocityDiff
 
 
 def test(Agent):
     """ Test wrapper """
+    
     # Initial Session
     with tf.Session(config = Agent.sess_config) as sess:
         
@@ -31,20 +32,23 @@ def test(Agent):
 
 def test_all(sess, Agent, is_train):
     """ Testing whole batches of training/testing set """
-    num = Agent.train_num if is_train else Agent.test_num
-    path = Agent.train_path if is_train else Agent.test_path
-    
-    total_loss = 0.0
-    total_deltaloss = 0.0
-    iou = 0.0
-    acc = 0.0
-    vel_diff = 0.0
-    pred_init_value = np.ones([Agent.batch_size, Agent.n_output])/2
-    dropPr = Agent.trainDropPr if is_train else Agent.testDropPr
     
     # Init MVD
     MVD = MeanVelocityDiff(W=Agent.W)
 
+    # Init parameters
+    num = Agent.train_num if is_train else Agent.test_num
+    path = Agent.train_path if is_train else Agent.test_path
+    dropPr = Agent.trainDropPr if is_train else Agent.testDropPr
+    
+    iou = 0.0
+    acc = 0.0
+    vel_diff = 0.0
+    total_loss = 0.0
+    total_deltaloss = 0.0
+    pred_init_value = np.ones([Agent.batch_size, Agent.n_output])/2
+    
+    # Go through each batch
     for num_batch in range(1,num+1):
         
         # load test_data

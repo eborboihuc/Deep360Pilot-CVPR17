@@ -24,6 +24,7 @@ def train(Agent):
 
     # Initial Session
     with tf.Session(config = Agent.sess_config) as sess:
+        
         # Initializing the variables
         init = tf.global_variables_initializer()
         
@@ -44,12 +45,14 @@ def train(Agent):
         best_iou = 0.0
         best_vel = 999999.0
 
+        # Initial predition location
         pred_init_value = np.ones([Agent.batch_size, Agent.n_output])/2
 
         # Keep training until reach max iterations
         for epoch in range(Agent.n_epochs):
-            # random_chose batch.npz
-            n_batchs = np.arange(1,Agent.train_num+1)
+            
+            # random shuffle batch order
+            n_batchs = np.arange(1, Agent.train_num+1)
             np.random.shuffle(n_batchs)
             
             epoch_loss = 0.0
@@ -112,7 +115,7 @@ def train(Agent):
                 Agent.Best_score={'epoch':epoch, 'loss':epoch_loss/num, 'smooth_loss':delta_loss/num, \
                             'lr':lr_out, 'iou':iou/num, 'acc':acc/num, 'vel_diff':vel_diff/num}
             
-            if vel_diff/num < best_vel and Agent.bool_two_phase:
+            if vel_diff/num < best_vel and not Agent.bool_two_phase:
                 best_vel = vel_diff/num
                 
                 # Save lam{}_regress_model
@@ -125,13 +128,14 @@ def train(Agent):
                 test_all(sess, Agent, is_train=True)
                 print "Testing"
                 test_all(sess, Agent, is_train=False)
+        
         print "Optimization Finished!"
-
         print "Total Training"
         test_all(sess, Agent, is_train=True)
         print "Total Testing"
         test_all(sess, Agent, is_train=False)
-        
+ 
+        # Save log
         np.save(
             os.path.join(Agent.save_path, 'logs', '{}_lam{}_{}_best_model_log'.format(
                     Agent.domain, 
@@ -140,6 +144,8 @@ def train(Agent):
             ), 
             Agent.Best_score
         )
+
+        # Save model
         saver.save(sess, os.path.join(Agent.save_path, 'final_model'))
 
 

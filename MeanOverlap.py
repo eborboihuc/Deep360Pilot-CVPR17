@@ -145,6 +145,7 @@ if __name__ == '__main__':
     assert mo.IOU((10, 20), (361, 20)) == 0.0, "IOU is: {}".format(mo.IOU((10, 20), (361, 20)))
     assert mo.IOU((410, 20), (410, 20)) == 1.0, "IOU is: {}".format(mo.IOU((410, 20), (410, 20)))
     assert mo.IOU((1745, 20), (165, 20)) == 3500.0/122500, "IOU is: {}".format(mo.IOU((1745, 20), (165, 20)))
-    assert mo.IOU((165, 20), (165, 282.5)) == 0.0, "IOU is: {}".format(mo.IOU((165, 20), (165, 282.5)))
+    # Enable this if using 4:3
+    #assert mo.IOU((165, 20), (165, 282.5)) == 0.0, "IOU is: {}".format(mo.IOU((165, 20), (165, 282.5)))
     
     print "Success!"

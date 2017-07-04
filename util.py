@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from os.path import join
 import cv2
 import pdb
 import numpy as np
-from MeanOverlap import MeanOverlap
+from os.path import join
 from ops import l2_dist_360
+from MeanOverlap import MeanOverlap
 
 
 def catData(totalData, newData):
