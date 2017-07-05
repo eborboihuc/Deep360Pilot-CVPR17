@@ -46,7 +46,7 @@ def train(Agent):
         best_vel = 999999.0
 
         # Initial predition location
-        pred_init_value = np.ones([Agent.batch_size, Agent.n_output])/2
+        init_viewangle_value = np.ones([Agent.batch_size, Agent.n_output])/2
 
         # Keep training until reach max iterations
         for epoch in range(Agent.n_epochs):
@@ -71,8 +71,8 @@ def train(Agent):
                 gt = gt[:,:,:2]
                 
                 # Fit training using batch data
-                _, summary_out, batch_loss, deltaloss, pred_out, alpha_out, lr_out = sess.run(
-                        [Agent.opt, Agent.merged, Agent.cost, Agent.delta, Agent.pred, Agent.alphas, Agent.lr], 
+                _, summary_out, batch_loss, deltaloss, viewangle_out, sal_box_out, lr_out = sess.run(
+                        [Agent.opt, Agent.merged, Agent.cost, Agent.delta, Agent.viewangle, Agent.sal_box_prob, Agent.lr], 
                         feed_dict={
                             Agent.obj_app: batch_xs, 
                             Agent.y: batch_ys, 
@@ -81,30 +81,29 @@ def train(Agent):
                             Agent.inclusion: batch_inclusion, 
                             Agent.hof: batch_hof, 
                             Agent.keep_prob: 1-Agent.trainDropPr, 
-                            Agent.pred_init: pred_init_value, 
+                            Agent.init_viewangle: init_viewangle_value, 
                             Agent._phase: Agent.bool_two_phase
                         }
                 )
                 
                 writer.add_summary(summary_out, epoch*len(n_batchs)+batch)
 
-                pred_out[:,:,0] = (pred_out[:,:,0]*Agent.W).astype(int)
-                pred_out[:,:,1] = (pred_out[:,:,1]*Agent.H).astype(int)
+                viewangle_out[:,:,0] = (viewangle_out[:,:,0]*Agent.W).astype(int)
+                viewangle_out[:,:,1] = (viewangle_out[:,:,1]*Agent.H).astype(int)
 
                 sys.stdout.flush()
                 epoch_loss += batch_loss/Agent.n_frames
                 delta_loss += deltaloss/Agent.n_frames
-                acc        += float(np.sum(np.logical_and(batch_ys, alpha_out))) / (Agent.batch_size*Agent.n_frames)
-                iou        += score(Agent, pred_out, gt)
+                acc        += float(np.sum(np.logical_and(batch_ys, sal_box_out))) / (Agent.batch_size*Agent.n_frames)
+                iou        += score(Agent, viewangle_out, gt)
                 # convert into degree form (* 360 / 1920 / n_frames)
-                vel_diff   += MVD.batch_vel_diff(pred_out) * 0.1875 / (Agent.n_frames)
+                vel_diff   += MVD.batch_vel_diff(viewangle_out) * 0.1875 / (Agent.n_frames)
 
             # Print one epoch
-            print "Epoch: {} done. Loss: {:.3f} DeltaLoss: {:.3f}, lr: {:.3f}, IoU: {:.3f}, Acc: {:.3f}, Vel_diff: {:.3f}".format(
-                    epoch, epoch_loss/num, delta_loss/num, lr_out, iou/num, acc/num, vel_diff/num)
-
             tStop_epoch = time.time()
-            print "Epoch Time Cost: {}s".format(round(tStop_epoch - tStart_epoch,2))
+            print "Epoch: {:3d} | Time: {:.2f}s | Loss: {:.3f} DeltaLoss: {:.3f}, lr: {:.2e}, IoU: {:.3f}, Acc: {:.3f}, Vel_diff: {:.3f}".format(
+                    epoch, round(tStop_epoch - tStart_epoch,2), epoch_loss/num, delta_loss/num, lr_out, iou/num, acc/num, vel_diff/num)
+
             sys.stdout.flush()
             
             if iou/num > best_iou and Agent.bool_two_phase:
@@ -124,15 +123,11 @@ def train(Agent):
                             'lr':lr_out, 'iou':iou/num, 'acc':acc/num, 'vel_diff':vel_diff/num}
                 
             if (epoch+1) % Agent.display_step == 0:
-                print "Training"
                 test_all(sess, Agent, is_train=True)
-                print "Testing"
                 test_all(sess, Agent, is_train=False)
         
         print "Optimization Finished!"
-        print "Total Training"
         test_all(sess, Agent, is_train=True)
-        print "Total Testing"
         test_all(sess, Agent, is_train=False)
  
         # Save log

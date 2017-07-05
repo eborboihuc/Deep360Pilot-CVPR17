@@ -88,26 +88,10 @@ class Deep360Pilot(object):
     def build_model(self):
         """ Build up a model based on RNN(~) down below """
         
-        self.global_step = tf.contrib.framework.get_or_create_global_step()
-        
-        # tf Graph input
-        self.obj_app    = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_input])
-        self.y          = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection])
-        self.y_loc      = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_output+1])
-        self.box_center = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_output])
-        self.inclusion  = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, 3])
-        self.hof        = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_bin_size])
-        self.keep_prob  = tf.placeholder("float")
-        self.pred_init  = tf.placeholder("float", [self.batch_size, self.n_output])
-        self._phase     = tf.placeholder("bool", name="trainphase")   
-        
-        # Initial prediction
-        self.prev_pred_init = tf.convert_to_tensor(self.pred_init)
-        
         # Initial variables
         self.init_vars()
 
-        # RNN 
+        # Selector and Regressor RNN 
         self.RNN()
 
         # Define optimizer
@@ -119,15 +103,33 @@ class Deep360Pilot(object):
         
 
     def init_vars(self):
+        """ Declare graph inputs and variables used in RNN() down below """
+        
+        # Steps
+        self.global_step = tf.contrib.framework.get_or_create_global_step()
+        
+        # tf Graph input
+        self.obj_app        = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_input])
+        self.y              = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection])
+        self.y_loc          = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_output+1])
+        self.box_center     = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_output])
+        self.inclusion      = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, 3])
+        self.hof            = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_bin_size])
+        self.keep_prob      = tf.placeholder("float")
+        self.init_viewangle = tf.placeholder("float", [self.batch_size, self.n_output])
+        self._phase         = tf.placeholder("bool", name="trainphase")   
+        
+        # Initial prediction
+        self.prev_viewangle_init = tf.convert_to_tensor(self.init_viewangle)
         
         # Define self.weights
         self.weights = {
             'em_att': tf.get_variable('em_att', shape=[self.n_input, self.n_hidden], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
-            'att_w': tf.get_variable('att_w', shape=[self.n_hidden+4, self.n_hidden+2], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
+            'att_w': tf.get_variable('att_w', shape=[self.n_hidden+2, self.n_hidden+2], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
             'att_wa': tf.get_variable('att_wa', shape=[self.n_hidden, self.n_hidden+2], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
-            'att_ua': tf.get_variable('att_ua', shape=[self.n_hidden+2, self.n_hidden+2], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
+            'att_ua': tf.get_variable('att_ua', shape=[self.n_hidden+14, self.n_hidden+2], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
             'gaze': tf.get_variable('gaze', shape=[self.n_hidden, self.n_detection], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
-            'onebox': tf.get_variable('onebox', shape=[self.n_hidden+2, self.n_onebox], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
+            'onebox': tf.get_variable('onebox', shape=[self.n_hidden+14, self.n_onebox], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
         }
         self.biases = {
             'em_att': tf.get_variable('em_att_b', shape=[1, self.n_hidden], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
@@ -183,97 +185,101 @@ class Deep360Pilot(object):
     def RNN(self):
         """ Define Selector RNN and Regressor RNN here """
 
-        prev_pred       = self.prev_pred_init
-        reg_hidden      = tf.zeros([self.batch_size, self.n_output])
+        prev_viewangle  = self.prev_viewangle_init
         prev_velocity   = tf.zeros([self.batch_size, self.n_output])
+        reg_hidden      = tf.zeros([self.batch_size, self.n_output])
         h_prev          = tf.ones([self.batch_size, self.n_hidden]) / 2.0
         
-        predpr_array    = tf.TensorArray(dtype=tf.float32, size=self.n_frames)
+        sal_box_prob_array    = tf.TensorArray(dtype=tf.float32, size=self.n_frames)
         pred_array      = tf.TensorArray(dtype=tf.float32, size=self.n_frames)
         
         
-        def recurrent_body(i, predpr_array, pred_array, prev_pred, prev_velocity, rnn_output, rnn_state, reg_hidden, cost, deltaloss):
+        def recurrent_body(i, sal_box_prob_array, pred_array, prev_viewangle, prev_velocity, prev_rnn_output, prev_rnn_state, reg_hidden, cost, deltaloss):
 
             # Input
-            cur_box_center = tf.transpose(self.box_center[:, i, :, :],[1, 0, 2]) # n_det x b x self.n_output
-            X = tf.transpose(self.obj_app[:, i, :, :], [1, 0, 2])  # permute n_dets and self.batch_size (n_det x b x h)
-            #X = tf.transpose(self.obj_app[:,i,:,:] * tf.expand_dims(self.inclusion[:,i,:,0], 2), [1, 0, 2])  # permute n_dets and self.batch_size (n_det x b x h)
+            O_t = tf.transpose(self.obj_app[:, i, :, :], [1, 0, 2])  # (n_det, n_batch, n_hidden)
+            #O_t = tf.transpose(self.obj_app[:,i,:,:] * tf.expand_dims(self.inclusion[:,i,:,0], 2), [1, 0, 2])  # (n_det, n_batch, n_hidden)
+            M_t = tf.transpose(self.hof[:, i, :, :], [1, 0, 2]) # (n_det, n_batch, n_bin_size)
             
+            # Location encode
+            cur_box_center = tf.transpose(self.box_center[:, i, :, :], [1, 0, 2]) # (n_det, n_batch, n_output)
+            prev_loc = tf.tile(tf.expand_dims(prev_viewangle, 0), [self.n_detection, 1, 1]) # (n_det, n_batch, n_output)
+            P_t = tf_dist_360(prev_loc, cur_box_center, 2)
+
             # Object embedded
-            X = tf.reshape(X, [-1, self.n_input]) # (n_dets*self.batch_size, self.n_input)
-            X = tf.matmul(X, self.weights['em_att']) + self.biases['em_att'] # (n_det x b) x h
-            X = tf.reshape(X, [self.n_detection, self.batch_size, self.n_hidden]) # n_det x b x h
+            O_t = tf.reshape(O_t, [-1, self.n_input]) # (n_det, n_batch, n_input)
+            O_t = tf.matmul(O_t, self.weights['em_att']) + self.biases['em_att'] # (n_det * n_batch, n_hidden)
+            O_t = tf.reshape(O_t, [self.n_detection, self.batch_size, self.n_hidden]) # (n_det, n_batch, n_hidden)
             
-            prev_loc = tf.tile(tf.expand_dims(prev_pred, 0), [self.n_detection, 1, 1]) # n_det x b x self.n_output
-            X = tf.concat(2, [X, tf_dist_360(prev_loc, cur_box_center, 2)]) # n_det x b x h+2
+            # Object level Feature
+            V_t = tf.concat(2, [O_t, P_t, M_t]) # (n_det, n_batch, n_hidden+2+12)
 
             # Object attention
-            brcst_w = tf.tile(tf.expand_dims(self.weights['att_w'], 0), [self.n_detection, 1, 1]) # n_det x h+4 x h+2
-            image_part = tf.batch_matmul(X, tf.tile(tf.expand_dims(self.weights['att_ua'], 0), [self.n_detection, 1, 1])) + self.biases['att_ba'] # n_det x b x h+2
-            e = tf.tanh(tf.matmul(rnn_output, self.weights['att_wa']) + image_part) # n_det x b x h+2
+            image_part = tf.matmul(tf.reshape(V_t, [-1, self.n_hidden+14]), self.weights['att_ua']) + self.biases['att_ba'] # (n_det * n_batch, n_hidden+2)
+            image_part = tf.reshape(image_part, [self.n_detection, self.batch_size, self.n_hidden+2])
+            e = tf.tanh(tf.matmul(prev_rnn_output, self.weights['att_wa']) + image_part) # (n_det, n_batch, n_hidden+2)
             
-            # TODO:motion attention
-            inclusion_emb = tf.expand_dims(tf.transpose(self.inclusion[:, i, :, 0], [1, 0]), 2)
-            inclusion_emb = tf.tile(inclusion_emb, [1, 1, 2]) # n_det x b x 2
-            e = tf.concat(2, [e, inclusion_emb]) # n_det x b x h+4
-            e = tf.exp(tf.reduce_sum(tf.batch_matmul(e, brcst_w), 2)) # n_det x b
+            e = tf.matmul(tf.reshape(e, [-1, self.n_hidden+2]), self.weights['att_w']) # (n_det * n_batch, n_hidden+2)
+            e = tf.reshape(e, [self.n_detection, self.batch_size, self.n_hidden+2]) # (n_det, n_batch, n_hidden+2)
+            e = tf.exp(tf.reduce_sum(e, 2)) # (n_det, n_batch)
             
             # Eliminate the empty box
-            denomin = tf.reduce_sum(e,0) # b
+            denomin = tf.reduce_sum(e,0) # (n_batch, )
             denomin = denomin + tf.to_float(tf.equal(denomin, 0)) # avoid nan
 
             # Soft attention : alphas
-            alphas = tf.div(e, tf.tile(tf.expand_dims(denomin, 0), [self.n_detection, 1])) # n_det x b
+            alphas = tf.div(e, tf.tile(tf.expand_dims(denomin, 0), [self.n_detection, 1])) # (n_det, n_batch)
             
-            attention_list = tf.mul(tf.tile(tf.expand_dims(alphas, 2),[1, 1, self.n_hidden+2]), X) # n_det x b x h+2
-            attention = tf.batch_matmul(attention_list, tf.tile(tf.expand_dims(self.weights['onebox'], 0), [self.n_detection, 1, 1])) # n_det x b x h
-            attention = tf.reshape(tf.transpose(attention, [1, 0, 2]), [self.batch_size, -1])
-            
+            attention_list = tf.mul(tf.tile(tf.expand_dims(alphas, 2),[1, 1, self.n_hidden+14]), V_t) # (n_det, n_batch, n_hidden+2)
+            attention = tf.matmul(tf.reshape(attention_list, [-1, self.n_hidden+14]), self.weights['onebox']) # (n_det * n_batch, n_onebox)
+            attention = tf.transpose(tf.reshape(attention, [self.n_detection, self.batch_size, self.n_onebox]), [1, 0, 2]) # (n_batch, n_det, n_onebox)
+            attention = tf.reshape(attention, [self.batch_size, -1])
+
             # Selector RNN
-            rnn_output, rnn_state = self.rnn_cell(attention, rnn_state)
+            rnn_output, rnn_state = self.rnn_cell(attention, prev_rnn_state)
             
             # Gaze prediction
-            predpr = tf.matmul(rnn_output, self.weights['gaze']) + self.biases['gaze'] # b x self.n_detection
+            sal_box_prob = tf.matmul(rnn_output, self.weights['gaze']) + self.biases['gaze'] # (n_batch, n_det)
 
             # Gaze location
-            amax = tf.argmax(tf.nn.log_softmax(predpr), 1) # b
-            amaxDense = tf.one_hot(amax, self.n_detection, 1.0, 0.0, 0) # self.n_detection x b
-            amaxDenseBatch = tf.tile(tf.expand_dims(amaxDense, 2), [1, 1, self.n_output]) # self.n_detection x b x self.n_output
-            predloc = tf.reduce_sum(tf.mul(cur_box_center, amaxDenseBatch), 0) # b x self.n_output
+            amax = tf.argmax(tf.nn.log_softmax(sal_box_prob), 1) # n_batch
+            amaxDense = tf.one_hot(amax, self.n_detection, 1.0, 0.0, 0) # (n_det, n_batch)
+            amaxDenseBatch = tf.tile(tf.expand_dims(amaxDense, 2), [1, 1, self.n_output]) # (n_det, n_batch, n_output)
+            cur_select_angle = tf.reduce_sum(tf.mul(cur_box_center, amaxDenseBatch), 0) # (n_batch, n_output)
             
-            # Zero box location handle: Add prev_pred at where predloc is zerow
-            zero_box = tf.reduce_sum(predloc, 1) # b x 1
-            zero_box_mask = tf.expand_dims(tf.cast(tf.equal(zero_box, 0.0), tf.float32),1) # b x 1
-            predloc = predloc + tf.mul(prev_pred, zero_box_mask) # b x self.n_output
+            # Zero box location handle: Add prev_viewangle at where predloc is zerow
+            zero_box = tf.reduce_sum(cur_select_angle, 1) # n_batch
+            zero_box_mask = tf.expand_dims(tf.cast(tf.equal(zero_box, 0.0), tf.float32), 1) # (n_batch, 1)
+            cur_select_angle = cur_select_angle + tf.mul(prev_viewangle, zero_box_mask) # (n_batch, n_output)
 
             # Gaze regression RNN
-            pred_diff = tf_dist_360_classify(prev_pred, predloc, 1) # b x self.n_output
+            pred_diff = tf_dist_360_classify(prev_viewangle, cur_select_angle, 1) # (n_batch, n_output)
             reg_output = tf.matmul(pred_diff, self.regressor_w['rnn_velo']) + tf.matmul(reg_hidden, self.regressor_w['rnn_h'])
-            pred = prev_pred + tf.matmul(reg_output, self.regressor_w['pred']) + self.regressor_b['pred']
+            cur_viewangle = prev_viewangle + tf.matmul(reg_output, self.regressor_w['pred']) + self.regressor_b['pred']
             
             # Get velocity
-            current_velocity = tf_dist_360_classify(prev_pred, pred, 1) # b x self.n_output
+            current_velocity = tf_dist_360_classify(prev_viewangle,cur_viewangle, 1) # (n_batch, n_output)
 
             # 360 constraint, x[x > 1.0] = x[x > 1.0] - 1.0, x[x < 0.0] = x[x < 0.0] + 1.0, 0.0 < y < 1.0
-            xpart, ypart = tf.split(1, 2, pred)
-            _greater = tf.greater(xpart, 1.0) # b x 1
-            _less = tf.less(xpart, 0.0) # b x 1
+            xpart, ypart = tf.split(1, 2, cur_viewangle)
+            _greater = tf.greater(xpart, 1.0) # (n_batch, 1)
+            _less = tf.less(xpart, 0.0) # (n_batch, 1)
             xpart = xpart - tf.to_float(_greater)
             xpart = xpart + tf.to_float(_less)
             ypart = tf.clip_by_value(ypart, 0.0, 1.0)
-            pred = tf.concat(1,[xpart, ypart]) # b x self.n_output
+            cur_viewangle = tf.concat(1,[xpart, ypart]) # b x self.n_output
 
             # Send out pred and one_hot
-            pred_array = pred_array.write(i, pred)
-            #predpr_array = predpr_array.write(i, predpr)
-            predpr_array = predpr_array.write(i, amaxDense)
+            pred_array = pred_array.write(i, cur_viewangle)
+            #sal_box_prob_array = sal_box_prob_array.write(i, sal_box_prob)
+            sal_box_prob_array = sal_box_prob_array.write(i, amaxDense)
 
             # Pred to one hot
-            loss = tf.nn.softmax_cross_entropy_with_logits(predpr, self.y[:, i, :])
+            loss = tf.nn.softmax_cross_entropy_with_logits(sal_box_prob, self.y[:, i, :])
             loss = tf.reduce_mean(loss)
 
             # Pred to y_loc
-            l2diff = tf_l2_dist_360(pred, self.y_loc[:, i, :2], 1) # b x n_output -> b x 1
+            l2diff = tf_l2_dist_360(cur_viewangle, self.y_loc[:, i, :2], 1) # b x n_output -> b x 1
             l2loss = tf.reduce_mean(l2diff)
 
             """ Regulized by current prediction and previous ones
@@ -282,7 +288,7 @@ class Deep360Pilot(object):
             """
             # Classification phase (True) or Regression phase (False)
             reg_l2diff = tf.cond(self._phase, \
-                    lambda: tf_l2_dist_360(pred, prev_pred, 1), \
+                    lambda: tf_l2_dist_360(cur_viewangle, prev_viewangle, 1), \
                     lambda: tf_l2_dist_360(current_velocity, prev_velocity, 1)) # b x n_output -> b x 1
             
             deltaloss = tf.reduce_mean(reg_l2diff)
@@ -292,18 +298,18 @@ class Deep360Pilot(object):
                     lambda: loss + self.classify_lmbda * deltaloss, \
                     lambda: l2loss + self.regress_lmbda * deltaloss)
             
-            return i+1, predpr_array, pred_array, pred, current_velocity, rnn_output, rnn_state, reg_hidden, cost, deltaloss
+            return i+1, sal_box_prob_array, pred_array, cur_viewangle, current_velocity, rnn_output, rnn_state, reg_hidden, cost, deltaloss
 
 
         # While loop over self.n_frames
-        _, self.predpr, self.pred, cur_pred, cur_vel, rnn_output, rnn_state, reg_state, self.cost, self.delta = tf.while_loop(
+        _, sal_box_prob, viewangle, cur_pred, cur_vel, rnn_output, rnn_state, reg_state, self.cost, self.delta = tf.while_loop(
                 cond = lambda i, *_: i < self.n_frames,
-                body = recurrent_body, # i, predpr, pred, cur_vel, rnn_output, rnn_state, reg_hidden, total_loss, delta_loss
+                body = recurrent_body, # i, sal_box_prob, pred, cur_vel, rnn_output, rnn_state, reg_hidden, total_loss, delta_loss
                 loop_vars = (
                     tf.constant(0, tf.int32), 
-                    predpr_array, 
+                    sal_box_prob_array, 
                     pred_array,
-                    prev_pred, 
+                    prev_viewangle, 
                     prev_velocity, 
                     self.rnn_state[1], 
                     self.rnn_state, 
@@ -313,8 +319,8 @@ class Deep360Pilot(object):
                     )
         )
         
-        #self.alphas = tf.transpose(self.predpr.pack(), [1, 0, 2]) # predpr
-        self.alphas = tf.transpose(self.predpr.pack(), [2, 0, 1]) # amaxDense
-        self.pred = tf.transpose(self.pred.pack(), [1, 0, 2])
+        #self.sal_box_prob = tf.transpose(sal_box_prob.pack(), [1, 0, 2]) # sal_box_prob
+        self.sal_box_prob = tf.transpose(sal_box_prob.pack(), [2, 0, 1]) # amaxDense
+        self.viewangle = tf.transpose(viewangle.pack(), [1, 0, 2])
 
 

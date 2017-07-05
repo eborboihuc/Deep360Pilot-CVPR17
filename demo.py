@@ -24,8 +24,8 @@ def video_base(Agent, vid_domain, vid_name):
     total_deltaloss = 0.0
     
     # Init prediction
-    total_pred = None
-    pred_init_value = np.ones([Agent.batch_size, Agent.n_output])/2
+    view_trajectory = None
+    init_viewangle_value = np.ones([Agent.batch_size, Agent.n_output])/2
     
     # Init MVD
     MVD = MeanVelocityDiff(W=Agent.W)
@@ -92,40 +92,41 @@ def video_base(Agent, vid_domain, vid_name):
             label_batch[:,:,1] = label_batch[:,:,1]/Agent.H
 
             # TODO: add data level inclusion
-            [_, loss, deltaloss, pred_out, alpha_out] = sess.run([Agent.opt, Agent.cost, Agent.delta, Agent.pred, Agent.alphas], \
+            [_, loss, deltaloss, viewangle_out, sal_box_out] = sess.run([Agent.opt, Agent.cost, Agent.delta, Agent.viewangle, Agent.sal_box_prob], \
                     feed_dict={Agent.obj_app: roisavg_batch, Agent.y: one_hot_label_batch, Agent.y_loc: label_batch, \
                             Agent.box_center: box_center[:,:,:,:Agent.n_output], Agent.inclusion: inclusion_batch, \
-                            Agent.hof: hof_batch, Agent.keep_prob:1.0, Agent.pred_init: pred_init_value, Agent._phase: Agent.bool_two_phase})
+                            Agent.hof: hof_batch, Agent.keep_prob:1.0, Agent.init_viewangle: init_viewangle_value, Agent._phase: Agent.bool_two_phase})
             
             total_loss += loss/Agent.n_frames #(Agent.batch_size*Agent.n_frames)
             total_deltaloss += deltaloss/Agent.n_frames
 
             # Feed in init value to next batch
-            pred_init_value = pred_out[:,-1,:].copy()
+            init_viewangle_value = viewangle_out[:,-1,:].copy()
 
-            pred_out[:,:,0] = (pred_out[:,:,0]*Agent.W).astype(int)
-            pred_out[:,:,1] = (pred_out[:,:,1]*Agent.H).astype(int)
+            viewangle_out[:,:,0] = (viewangle_out[:,:,0]*Agent.W).astype(int)
+            viewangle_out[:,:,1] = (viewangle_out[:,:,1]*Agent.H).astype(int)
             
-            ac = float(np.sum(np.logical_and(one_hot_label_batch, alpha_out))) / (Agent.batch_size * Agent.n_frames)
-            iu = score(Agent, pred_out, gt[:,:,:2], False)
+            corr = np.sum(np.logical_and(one_hot_label_batch, sal_box_out))
+            ac = float(corr) / (Agent.batch_size * Agent.n_frames)
+            iu = score(Agent, viewangle_out, gt[:,:,:2], False)
 
             # only one row in batch are used, average to get result.
             # convert into degree form (* 360 / 1920 / Agent.n_frames)
-            vd = MVD.batch_vel_diff(pred_out) * 0.1875 / (Agent.n_frames)
+            vd = MVD.batch_vel_diff(viewangle_out) * 0.1875 / (Agent.n_frames)
             
             acc += ac
             iou += iu
             vel_diff += vd
-            print "Acc: {:.3f}, IoU: {:.3f}, Vel_diff:{:.3f}".format(ac, iu, vd)
-            print "Corr: {}".format(np.sum(np.logical_and(one_hot_label_batch, alpha_out)))
+            print "Video: {:3d} | Corr: {:3d}, IoU: {:.3f}, Acc: {:.3f}, Vel_diff: {:.3f}".format(
+                count, corr, iu, ac, vd)
             print "One Hot: ", np.where(one_hot_label_batch[0])
             print "----------------------------------------------------------------"
-            print "Prediction: ", np.where(alpha_out[0])
+            print "Prediction: ", np.where(sal_box_out[0])
 
-            if total_pred is None:
-                total_pred = pred_out[0].copy()
+            if view_trajectory is None:
+                view_trajectory = viewangle_out[0].copy()
             else:
-                total_pred = np.vstack((total_pred, pred_out[0].copy()))
+                view_trajectory = np.vstack((view_trajectory, viewangle_out[0].copy()))
             
             ret = 0
             if Agent._show:
@@ -138,7 +139,7 @@ def video_base(Agent, vid_domain, vid_name):
                     if Agent._show:
                         print 
                         print ("num_batch: {}, video: {}, count: {}, nimage: {}").format(n_clips, vidname, count, nimage)
-                        ret = visual_gaze(Agent, vidname, gt[0,nimage,:2], pred_out[0,nimage, :], alpha_out[0,nimage, :], box[0,nimage, :, :])
+                        ret = visual_gaze(Agent, vidname, gt[0,nimage,:2], viewangle_out[0,nimage, :], sal_box_out[0,nimage, :], box[0,nimage, :, :])
                     if ret == -1 or ret == -2 or ret == -3:
                         break
                 if ret == -1 or ret == -2:
@@ -153,10 +154,10 @@ def video_base(Agent, vid_domain, vid_name):
         print "Velocity Diff = {:.3f}".format(vel_diff/n_clips)
 
         if Agent._save_pred:
-            print total_pred.shape
+            print view_trajectory.shape
             out_path = Agent.save_path + vid_name 
             print "Save prediction of vid {} to {}".format(vid_name, Agent.save_path)
-            np.save(out_path + "_{}_{}_lam{}_{}_best_model".format(Agent.domain, Agent.n_detection, Agent.regress_lmbda, Agent.two_phase), total_pred)
+            np.save(out_path + "_{}_{}_lam{}_{}_best_model".format(Agent.domain, Agent.n_detection, Agent.regress_lmbda, Agent.two_phase), view_trajectory)
             with open(out_path + "_{}_{}_lam{}_{}_best_model".format(Agent.domain, Agent.n_detection, Agent.regress_lmbda, Agent.two_phase) + '.txt', 'w') as f:
                 f.write("Loss = {:.5f}\n".format(total_loss/n_clips))
                 f.write("DeltaLoss = {:.5f}\n".format(total_deltaloss/n_clips))
