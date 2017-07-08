@@ -92,7 +92,7 @@ def video_base(Agent, vid_domain, vid_name):
             label_batch[:,:,1] = label_batch[:,:,1]/Agent.H
 
             # TODO: add data level inclusion
-            [_, loss, deltaloss, viewangle_out, sal_box_out] = sess.run([Agent.opt, Agent.cost, Agent.delta, Agent.viewangle, Agent.sal_box_prob], \
+            [loss, deltaloss, viewangle_out, sal_box_out] = sess.run([Agent.cost, Agent.delta, Agent.viewangle, Agent.sal_box_prob], \
                     feed_dict={Agent.obj_app: roisavg_batch, Agent.y: one_hot_label_batch, Agent.y_loc: label_batch, \
                             Agent.box_center: box_center[:,:,:,:Agent.n_output], Agent.inclusion: inclusion_batch, \
                             Agent.hof: hof_batch, Agent.keep_prob:1.0, Agent.init_viewangle: init_viewangle_value, Agent._phase: Agent.bool_two_phase})

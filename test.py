@@ -59,7 +59,7 @@ def test_all(sess, Agent, is_train):
         # NOTE: Change this after feature changed
         gt = gt[:,:,:2]
 
-        [_, loss, deltaloss, viewangle_out, sal_box_out] = sess.run([Agent.opt, Agent.cost, Agent.delta, Agent.viewangle, Agent.sal_box_prob], 
+        [loss, deltaloss, viewangle_out, sal_box_out] = sess.run([Agent.cost, Agent.delta, Agent.viewangle, Agent.sal_box_prob], 
                 feed_dict={Agent.obj_app: batch_data, Agent.y: batch_label, Agent.y_loc: batch_y_loc, 
                 Agent.box_center: batch_box_center[:,:,:,:Agent.n_output], Agent.inclusion: batch_inclusion, 
                 Agent.hof: batch_hof, Agent.keep_prob:1.0-dropPr, 
