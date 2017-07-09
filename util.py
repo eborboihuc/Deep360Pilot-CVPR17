@@ -75,14 +75,10 @@ def load_batch_data(Agent, path, num_batch, _copy=False, _augment=False):
     data = np.load(join(path, 'pruned_roisavg/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:Agent.n_input]
     #data = np.load(join(path, 'roisavg/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:Agent.n_input]
     
-    labels = np.load(join(path, 'label/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_classes+1]
+    oracle_viewangle = np.load(join(path, 'label/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_classes+1]
     
     one_hot_labels = np.load(join(path, 'onehot/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection]
     #one_hot_labels = np.zeros((Agent.batch_size, Agent.n_frames, Agent.n_detection), dtype=np.float16)
-    
-    inclusion = np.zeros((Agent.batch_size, Agent.n_frames, Agent.n_detection, 3), dtype=np.float16)
-    inclusion[:,:,:,0] = np.load(join(path, 'avg_motion/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection]
-    inclusion[:,:,:,1:] = np.load(join(path, 'avg_flow/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:2]
     
     hof = np.load(join(path, 'hof/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:Agent.n_bin_size]
     
@@ -93,24 +89,23 @@ def load_batch_data(Agent, path, num_batch, _copy=False, _augment=False):
     img = np.zeros((Agent.batch_size), dtype=np.float16)
 
     if _augment is True:
-        data, labels, box_center = augment_data(data, labels, box_center)
+        data, oracle_viewangle, box_center = augment_data(data, oracle_viewangle, box_center)
 
     if _copy is True:
         box = np.copy(box_center)
-        gt = np.copy(labels)
+        gt = np.copy(oracle_viewangle)[:, :, :2]
     else:
         box = None
         gt = None
 
     box_center[:,:,:,0] = (box_center[:,:,:,0]/Agent.W + box_center[:,:,:,2]/Agent.W)/2
     box_center[:,:,:,1] = (box_center[:,:,:,1]/Agent.H + box_center[:,:,:,3]/Agent.H)/2
-    labels[:,:,0] = labels[:,:,0]/Agent.W
-    labels[:,:,1] = labels[:,:,1]/Agent.H
-    inclusion[:,:,:,1:] = inclusion[:,:,:,1:]-np.min(inclusion[:,:,:,1:])
-    denomin = np.max(inclusion[:,:,:,1:]) - np.min(inclusion[:,:,:,1:])
-    inclusion[:,:,:,1:] = inclusion[:,:,:,1:] / (denomin if denomin != 0 else 1.0)
+    box_center = box_center[:, :, :, :2]
+    oracle_viewangle[:,:,0] = oracle_viewangle[:,:,0]/Agent.W
+    oracle_viewangle[:,:,1] = oracle_viewangle[:,:,1]/Agent.H
+    oracle_viewangle = oracle_viewangle[:, :, :2]
 
-    return data, one_hot_labels, labels, box_center, inclusion, hof, img, box, gt
+    return data, one_hot_labels, oracle_viewangle, box_center, hof, img, box, gt
 
 
 def visual_gaze(Agent, img_name, gt, pred, alphas, box):

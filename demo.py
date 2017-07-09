@@ -9,7 +9,6 @@ from model import Deep360Pilot
 from MeanVelocityDiff import MeanVelocityDiff
 
 
-
 def video_base(Agent, vid_domain, vid_name):
     """ Run test as a whole video, instead of cropped batches """
     
@@ -62,42 +61,46 @@ def video_base(Agent, vid_domain, vid_name):
         for count in xrange(1, n_clips + 1):
             
             # load test_data
-            inclusion_batch = np.zeros((1, 50, Agent.n_detection, 3), dtype=np.float16)
-
             #box_center = np.load(os.path.join(FEATURE_PATH, 'divide_area_pruned_boxes{:04d}.npy'.format(count)))
             box_center = np.load(os.path.join(FEATURE_PATH, 'roislist{:04d}.npy'.format(count)))
             #roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'pruned_roisavg{:04d}.npy'.format(count)))
             roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'roisavg{:04d}.npy'.format(count)))
-            inclusion_batch[0, :, :, 0] = np.load(os.path.join(FEATURE_PATH, 'avg_motion{:04d}.npy'.format(count)))
-            inclusion_batch[0, :, :, 1:] = np.load(os.path.join(FEATURE_PATH, 'avg_flow{:04d}.npy'.format(count)))
             hof_batch = np.load(os.path.join(FEATURE_PATH, 'hof{:04d}.npy'.format(count)))
 
             box_center = np.tile(np.expand_dims(box_center, 0), [Agent.batch_size, 1, 1, 1])
             roisavg_batch = np.tile(np.expand_dims(roisavg_batch, 0), [Agent.batch_size, 1, 1, 1])
             hof_batch = np.tile(np.expand_dims(hof_batch, 0), [Agent.batch_size, 1, 1, 1])
-            inclusion_batch = np.tile(inclusion_batch, [Agent.batch_size, 1, 1, 1])
             
-            label_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_output+1])
+            oracle_viewangle_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_output+1])
             one_hot_label_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_detection])
             #one_hot_label = np.load(os.path.join(FEATURE_PATH, 'onehot{:04d}.npy'.format(count)))
             #one_hot_label_batch = np.tile(np.expand_dims(one_hot_label, 0), [Agent.batch_size, 1, 1])
 
             box = box_center.copy()
-            gt = label_batch.copy()
+            gt = oracle_viewangle_batch.copy()
             
             box_center[:,:,:,0] = (box_center[:,:,:,0]/Agent.W + box_center[:,:,:,2]/Agent.W)/2
             box_center[:,:,:,1] = (box_center[:,:,:,1]/Agent.H + box_center[:,:,:,3]/Agent.H)/2
+            box_center = box_center[:, :, :, :2]
 
-            label_batch[:,:,0] = label_batch[:,:,0]/Agent.W
-            label_batch[:,:,1] = label_batch[:,:,1]/Agent.H
+            oracle_viewangle_batch[:,:,0] = oracle_viewangle_batch[:,:,0]/Agent.W
+            oracle_viewangle_batch[:,:,1] = oracle_viewangle_batch[:,:,1]/Agent.H
 
-            # TODO: add data level inclusion
-            [loss, deltaloss, viewangle_out, sal_box_out] = sess.run([Agent.cost, Agent.delta, Agent.viewangle, Agent.sal_box_prob], \
-                    feed_dict={Agent.obj_app: roisavg_batch, Agent.y: one_hot_label_batch, Agent.y_loc: label_batch, \
-                            Agent.box_center: box_center[:,:,:,:Agent.n_output], Agent.inclusion: inclusion_batch, \
-                            Agent.hof: hof_batch, Agent.keep_prob:1.0, Agent.init_viewangle: init_viewangle_value, Agent._phase: Agent.bool_two_phase})
+            [loss, deltaloss, viewangle_out, sal_box_out] = sess.run(
+                    [Agent.cost, Agent.delta, Agent.viewangle, Agent.sal_box_prob], \
+                    feed_dict={
+                        Agent.obj_app: roisavg_batch, 
+                        Agent.oracle_actions: one_hot_label_batch, 
+                        Agent.oracle_viewangle: oracle_viewangle_batch, \
+                        Agent.box_center: box_center, 
+                        Agent.hof: hof_batch, 
+                        Agent.keep_prob:1.0, 
+                        Agent.init_viewangle: init_viewangle_value, 
+                        Agent._phase: Agent.bool_two_phase
+                    }
+            )
             
-            total_loss += loss/Agent.n_frames #(Agent.batch_size*Agent.n_frames)
+            total_loss += loss/Agent.n_frames
             total_deltaloss += deltaloss/Agent.n_frames
 
             # Feed in init value to next batch
@@ -119,7 +122,7 @@ def video_base(Agent, vid_domain, vid_name):
             vel_diff += vd
             print "Video: {:3d} | Corr: {:3d}, IoU: {:.3f}, Acc: {:.3f}, Vel_diff: {:.3f}".format(
                 count, corr, iu, ac, vd)
-            print "One Hot: ", np.where(one_hot_label_batch[0])
+            print "Oracle: ", np.where(one_hot_label_batch[0])
             print "----------------------------------------------------------------"
             print "Prediction: ", np.where(sal_box_out[0])
 

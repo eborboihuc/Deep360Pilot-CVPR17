@@ -9,6 +9,7 @@ import tensorflow as tf
 from test import test_all
 from util import load_batch_data, score
 from MeanVelocityDiff import MeanVelocityDiff
+from tensorflow.python import debug as tf_debug
 
 def train(Agent):
     """ Training wrapper """
@@ -22,6 +23,8 @@ def train(Agent):
 
     # Initial Session
     with tf.Session(config = Agent.sess_config) as sess:
+        if Agent.Debug:
+            sess = tf_debug.LocalCLIDebugWrapperSession(sess)
         
         # Initializing the variables
         init = tf.global_variables_initializer()
@@ -62,20 +65,16 @@ def train(Agent):
             tStart_epoch = time.time()
             for batch in range(Agent.train_num):
                 
-                batch_xs, batch_ys, batch_y_loc, batch_box_center, batch_inclusion, batch_hof, _, _, gt = load_batch_data(Agent, Agent.train_path, n_batchs[batch], True)
+                batch_xs, batch_ys, batch_o_viewangle, batch_box_center, batch_hof, _, _, gt = load_batch_data(Agent, Agent.train_path, n_batchs[batch], True)
         
-                # NOTE: Change this after feature changed
-                gt = gt[:,:,:2]
-                
                 # Fit training using batch data
                 _, summary_out, batch_loss, deltaloss, viewangle_out, sal_box_out, lr_out = sess.run(
                         [Agent.opt, Agent.merged, Agent.cost, Agent.delta, Agent.viewangle, Agent.sal_box_prob, Agent.lr], 
                         feed_dict={
                             Agent.obj_app: batch_xs, 
-                            Agent.y: batch_ys, 
-                            Agent.y_loc: batch_y_loc, 
-                            Agent.box_center: batch_box_center[:,:,:,:Agent.n_output], 
-                            Agent.inclusion: batch_inclusion, 
+                            Agent.oracle_actions: batch_ys, 
+                            Agent.oracle_viewangle: batch_o_viewangle, 
+                            Agent.box_center: batch_box_center, 
                             Agent.hof: batch_hof, 
                             Agent.keep_prob: 1-Agent.trainDropPr, 
                             Agent.init_viewangle: init_viewangle_value, 

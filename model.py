@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import pdb
 import tensorflow as tf
 
-rnn = tf.nn.rnn_cell #from tensorflow.contrib import rnn
-from tensorflow.contrib.layers import xavier_initializer, l2_regularizer
 from glob import glob
 from os.path import join
-from ops import *
+rnn = tf.nn.rnn_cell #from tensorflow.contrib import rnn
+from tensorflow.contrib.layers import xavier_initializer, l2_regularizer
+from ops import tf_360_constraint, tf_l2_dist, tf_l2_dist_360, tf_dist_360_classify
+from loss import total_cost, residual_loss, accurate_loss, smooth_loss, policy_loss
 
 class Deep360Pilot(object):
     
@@ -28,7 +28,7 @@ class Deep360Pilot(object):
         self.test_path          = join(flag.data_path, '{}_{}boxes'.format(flag.domain, flag.boxnum), 'test')
         self.save_path          = join(flag.root_path, 'checkpoint', 
                                             '{}_{}boxes_lam{}'.format(flag.domain, flag.boxnum, flag.lam))
-        self.restore_path       = join(flag.root_path, 'checkpoint', flag.model_path) if flag.model_path else None
+        self.restore_path       = join(flag.root_path, flag.model_path) if flag.model_path else None
     
         # Batch Number
         self.train_num          = len(glob(join(self.train_path, 'roisavg/*.npy'))) 
@@ -92,7 +92,7 @@ class Deep360Pilot(object):
         self.init_vars()
 
         # Selector and Regressor RNN 
-        self.RNN()
+        self.deep360pilot_rnn()
 
         # Define optimizer
         self.opt = self.optimizer(name=self.opt_method).minimize(self.cost, global_step=self.global_step)
@@ -109,48 +109,40 @@ class Deep360Pilot(object):
         self.global_step = tf.contrib.framework.get_or_create_global_step()
         
         # tf Graph input
-        self.obj_app        = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_input])
-        self.y              = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection])
-        self.y_loc          = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_output+1])
-        self.box_center     = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_output])
-        self.inclusion      = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, 3])
-        self.hof            = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_bin_size])
-        self.keep_prob      = tf.placeholder("float")
-        self.init_viewangle = tf.placeholder("float", [self.batch_size, self.n_output])
-        self._phase         = tf.placeholder("bool", name="trainphase")   
+        self.obj_app            = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_input])
+        self.oracle_actions     = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection])
+        self.oracle_viewangle   = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_output])
+        self.box_center         = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_output])
+        self.hof                = tf.placeholder("float", [self.batch_size, self.n_frames, self.n_detection, self.n_bin_size])
+        self.keep_prob          = tf.placeholder("float")
+        self.init_viewangle     = tf.placeholder("float", [self.batch_size, self.n_output])
+        self._phase             = tf.placeholder("bool", name="trainphase")   
         
         # Initial prediction
         self.prev_viewangle_init = tf.convert_to_tensor(self.init_viewangle)
         
-        # Define self.weights
+        # Define weights and biases
         self.weights = {
             'em_att': tf.get_variable('em_att', shape=[self.n_input, self.n_hidden], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
-            'att_w': tf.get_variable('att_w', shape=[self.n_hidden+2, self.n_hidden+2], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
-            'att_wa': tf.get_variable('att_wa', shape=[self.n_hidden, self.n_hidden+2], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
-            'att_ua': tf.get_variable('att_ua', shape=[self.n_hidden+14, self.n_hidden+2], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
+            'att_w': tf.get_variable('att_w', shape=[self.n_hidden+self.n_output, self.n_hidden+self.n_output], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
+            'att_wa': tf.get_variable('att_wa', shape=[self.n_hidden, self.n_hidden+self.n_output], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
+            'att_ua': tf.get_variable('att_ua', shape=[self.n_hidden+self.n_output+self.n_bin_size, self.n_hidden+self.n_output], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
             'gaze': tf.get_variable('gaze', shape=[self.n_hidden, self.n_detection], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
-            'onebox': tf.get_variable('onebox', shape=[self.n_hidden+14, self.n_onebox], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
+            'onebox': tf.get_variable('onebox', shape=[self.n_hidden+self.n_output+self.n_bin_size, self.n_onebox], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
         }
 
         self.biases = {
             'em_att': tf.get_variable('em_att_b', shape=[1, self.n_hidden], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
-            'att_ba': tf.get_variable('att_ba', shape=[1, self.n_hidden+2], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
+            'att_ba': tf.get_variable('att_ba', shape=[1, self.n_hidden+self.n_output], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
             'gaze' : tf.get_variable('gaze_b', shape=[1, self.n_detection], initializer=xavier_initializer(), regularizer=l2_regularizer(self.l2_beta)),
             
         }
         
         init = tf.constant_initializer([[1.0, 0.0], [0.0, 1.0]] + [[0.0, 0.0]]*self.n_bin_size)
-        self.regressor_w = {    
-            'rnn_velo': tf.Variable(tf.convert_to_tensor([[1.0, 0.0], [0.0, 1.0]])),
-            'rnn_h': tf.Variable(tf.convert_to_tensor([[0.0, 0.0], [0.0, 0.0]])),
-            
-            'pred': tf.get_variable('pred', shape=[self.n_output+self.n_bin_size, self.n_output], initializer=init, regularizer=l2_regularizer(self.l2_beta)),
-        }
+        self.regressor_w = tf.get_variable('pred', shape=[self.n_output+self.n_bin_size, self.n_output], initializer=init, regularizer=l2_regularizer(self.l2_beta))
         
         init_b = tf.constant_initializer([[0.0, 0.0]]*self.batch_size)
-        self.regressor_b = {
-            'pred_b': tf.get_variable('pred_b', shape=[self.batch_size, self.n_output], initializer=init_b, regularizer=l2_regularizer(self.l2_beta)),
-        }      
+        self.regressor_b = tf.get_variable('pred_b', shape=[self.batch_size, self.n_output], initializer=init_b, regularizer=l2_regularizer(self.l2_beta))
         
         with tf.variable_scope('Selector'):
             self.rnn_cell_s = rnn.LSTMCell(self.n_hidden, 
@@ -183,7 +175,7 @@ class Deep360Pilot(object):
             self.lr = tf.constant(self.init_learning_rate)
         else:
             self.lr = tf.train.exponential_decay(self.init_learning_rate, self.global_step,
-                                            5*((self.display_step + 1)*self.train_num + self.test_num), 0.9, staircase=True)
+                                            5*(self.display_step*self.train_num), 0.9, staircase=True)
 
         # Change optimizer base on name
         if kwargs['name'] == 'Adam':
@@ -198,26 +190,23 @@ class Deep360Pilot(object):
             raise IOError("Optimizer {} not Found.".format(kwargs['name']))
 
 
-    def RNN(self):
+    def deep360pilot_rnn(self):
         """ Define Selector RNN and Regressor RNN here """
 
         prev_viewangle  = self.prev_viewangle_init
         prev_velocity   = tf.zeros([self.batch_size, self.n_output])
-        #reg_hidden      = tf.zeros([self.batch_size, self.n_output])
         h_prev          = tf.ones([self.batch_size, self.n_hidden]) / 2.0
         
         sal_box_prob_array    = tf.TensorArray(dtype=tf.float32, size=self.n_frames)
         pred_array      = tf.TensorArray(dtype=tf.float32, size=self.n_frames)
         
-        
         def recurrent_body(i, sal_box_prob_array, pred_array, prev_viewangle, prev_velocity, prev_rnn_output_s, prev_rnn_state_s, prev_rnn_output_r, prev_rnn_state_r, cost, deltaloss):
-
-            # Input
+            #####################
+            #       Input       #
+            #####################
+            
             O_t = tf.transpose(self.obj_app[:, i, :, :], [1, 0, 2])  # (n_det, n_batch, n_hidden)
-            #O_t = tf.transpose(self.obj_app[:,i,:,:] * tf.expand_dims(self.inclusion[:,i,:,0], 2), [1, 0, 2])  # (n_det, n_batch, n_hidden)
             M_t = tf.transpose(self.hof[:, i, :, :], [1, 0, 2]) # (n_det, n_batch, n_bin_size)
-            #amax_inc = tf.nn.log_softmax(self.inclusion[:, i, :, 0]) # n_batch
-            #O_t = tf.transpose(tf.mul(self.obj_app[:,i,:,:], tf.expand_dims(amax_inc, 2)), [1, 0, 2])  # (n_det, n_batch, n_hidden)
             
             # Location encode
             cur_box_center = tf.transpose(self.box_center[:, i, :, :], [1, 0, 2]) # (n_det, n_batch, n_output)
@@ -230,15 +219,18 @@ class Deep360Pilot(object):
             O_t = tf.reshape(O_t, [self.n_detection, self.batch_size, self.n_hidden]) # (n_det, n_batch, n_hidden)
             
             # Object level Feature
-            V_t = tf.concat(2, [O_t, P_t, M_t]) # (n_det, n_batch, n_hidden+2+12)
+            V_t = tf.concat(2, [O_t, P_t, M_t]) # (n_det, n_batch, n_hidden+self.n_output+self.n_bin_size)
 
-            # Object attention
-            image_part = tf.matmul(tf.reshape(V_t, [-1, self.n_hidden+14]), self.weights['att_ua']) + self.biases['att_ba'] # (n_det * n_batch, n_hidden+2)
-            image_part = tf.reshape(image_part, [self.n_detection, self.batch_size, self.n_hidden+2])
-            e = tf.tanh(tf.matmul(prev_rnn_output_s, self.weights['att_wa']) + image_part) # (n_det, n_batch, n_hidden+2)
+            #####################
+            #   Selector RNN    #
+            #####################
             
-            e = tf.matmul(tf.reshape(e, [-1, self.n_hidden+2]), self.weights['att_w']) # (n_det * n_batch, n_hidden+2)
-            e = tf.reshape(e, [self.n_detection, self.batch_size, self.n_hidden+2]) # (n_det, n_batch, n_hidden+2)
+            obj_observation = tf.matmul(tf.reshape(V_t, [-1, self.n_hidden+self.n_output+self.n_bin_size]), self.weights['att_ua']) + self.biases['att_ba'] # (n_det * n_batch, n_hidden+self.n_output)
+            obj_observation = tf.reshape(obj_observation, [self.n_detection, self.batch_size, self.n_hidden+self.n_output])
+            e = tf.tanh(tf.matmul(prev_rnn_output_s, self.weights['att_wa']) + obj_observation) # (n_det, n_batch, n_hidden+self.n_output)
+            
+            e = tf.matmul(tf.reshape(e, [-1, self.n_hidden+self.n_output]), self.weights['att_w']) # (n_det * n_batch, n_hidden+self.n_output)
+            e = tf.reshape(e, [self.n_detection, self.batch_size, self.n_hidden+self.n_output]) # (n_det, n_batch, n_hidden+self.n_output)
             e = tf.exp(tf.reduce_sum(e, 2)) # (n_det, n_batch)
             
             # Eliminate the empty box
@@ -248,8 +240,8 @@ class Deep360Pilot(object):
             # Soft attention : alphas
             alphas = tf.div(e, tf.tile(tf.expand_dims(denomin, 0), [self.n_detection, 1])) # (n_det, n_batch)
             
-            attention_list = tf.mul(tf.tile(tf.expand_dims(alphas, 2),[1, 1, self.n_hidden+14]), V_t) # (n_det, n_batch, n_hidden+14)
-            attention = tf.matmul(tf.reshape(attention_list, [-1, self.n_hidden+14]), self.weights['onebox']) # (n_det * n_batch, n_onebox)
+            attention_list = tf.mul(tf.tile(tf.expand_dims(alphas, 2),[1, 1, self.n_hidden+self.n_output+self.n_bin_size]), V_t) # (n_det, n_batch, n_hidden+self.n_output+self.n_bin_size)
+            attention = tf.matmul(tf.reshape(attention_list, [-1, self.n_hidden+self.n_output+self.n_bin_size]), self.weights['onebox']) # (n_det * n_batch, n_onebox)
             attention = tf.transpose(tf.reshape(attention, [self.n_detection, self.batch_size, self.n_onebox]), [1, 0, 2]) # (n_batch, n_det, n_onebox)
             attention = tf.reshape(attention, [self.batch_size, -1]) # (n_batch, n_hidden)
 
@@ -272,61 +264,56 @@ class Deep360Pilot(object):
             zero_box_mask = tf.expand_dims(tf.cast(tf.equal(zero_box, 0.0), tf.float32), 1) # (n_batch, 1)
             cur_select_angle = cur_select_angle + tf.mul(prev_viewangle, zero_box_mask) # (n_batch, n_output)
 
-            # Gaze regression RNN
+            #####################
+            #   Regressor RNN   #
+            #####################
+
+            # Regressor RNN
             displacement = tf_dist_360_classify(cur_select_angle, prev_viewangle, 1) # (n_batch, n_output)
             reg_input = tf.concat(1, [displacement, cur_object_motion]) # (n_batch, n_output+n_bin_size)
             with tf.variable_scope('Regressor'):
                 rnn_output_r, rnn_state_r = self.rnn_cell_r(reg_input, prev_rnn_state_r)
             
-            #amax_inc = tf.reduce_sum(tf.mul(tf.transpose(self.inclusion[:, i, :, :2], [1, 0, 2]), amaxDenseBatch), 0) # (n_batch, 2)
             amax_inc = tf.reduce_sum(tf.mul(prev_velocity, amaxDenseBatch), 0) # (n_batch, 2)
-            residual = tf.mul(tf.tanh(tf.matmul(rnn_output_r, self.regressor_w['pred']) + self.regressor_b['pred_b']), amax_inc) # (n_batch, 2)
+            residual = tf.mul(tf.tanh(tf.matmul(rnn_output_r, self.regressor_w) + self.regressor_b), amax_inc) # (n_batch, 2)
             
             # Current viewangle generation
             cur_viewangle = prev_viewangle + displacement + residual
-            
-            """ 360 constraint, x[x > 1.0] = x[x > 1.0] - 1.0, x[x < 0.0]
-                = x[x < 0.0] + 1.0, 0.0 < y < 1.0
-            """
             cur_viewangle = tf_360_constraint(cur_viewangle)
 
+            #####################
+            #   Viewpoint traj  #
+            #####################
+            
             # Send out pred and one_hot
             pred_array = pred_array.write(i, cur_viewangle)
-            #sal_box_prob_array = sal_box_prob_array.write(i, sal_box_prob)
             sal_box_prob_array = sal_box_prob_array.write(i, amaxDense)
+            #sal_box_prob_array = sal_box_prob_array.write(i, sal_box_prob)
 
-            # Pred to one hot
-            loss = tf.nn.softmax_cross_entropy_with_logits(sal_box_prob, self.y[:, i, :])
-            loss = tf.reduce_mean(loss)
-
-            # Pred to y_loc
-            l2diff = tf_l2_dist_360(cur_viewangle, self.y_loc[:, i, :2], 1) # b x n_output -> b x 1
-            l2loss = tf.reduce_mean(l2diff)
-
-            """ Regularized by current prediction and previous ones
-                Deminish the gap between left most and right most by function : 
-                { max(X,0.5)-X + min(X,0.5)*2*X }=={ X[X < 0.5] = 1 - X[X< 0.5]] }
-            """
+            #####################
+            #        Cost       #
+            #####################
             # Get velocity
             current_velocity = tf_dist_360_classify(cur_viewangle, prev_viewangle, 1) # (n_batch, n_output)
             vel_diff = tf_l2_dist(current_velocity, prev_velocity, 1)
             angle_diff = tf_l2_dist_360(cur_viewangle, prev_viewangle, 1)
+            
+            # Pred to one hot
+            loss = policy_loss(sal_box_prob, self.oracle_actions[:, i, :])
+
+            # Pred to oracle_viewangle
+            l2loss = accurate_loss(cur_viewangle, self.oracle_viewangle[:, i, :], 1) # (b, n_output) -> (b, 1)
 
             # Classification phase (True) or Regression phase (False)
-            reg_l2diff = tf.cond(self._phase, \
-                    lambda: self.classify_lmbda * angle_diff, \
-                    lambda: self.regress_lmbda * vel_diff ) # b x n_output -> b x 1
+            deltaloss = smooth_loss(self._phase, self.classify_lmbda, self.regress_lmbda, angle_diff, vel_diff) # b x n_output -> b x 1
             
-            deltaloss = tf.reduce_mean(reg_l2diff)
-            vel_loss = tf.reduce_mean(vel_diff)
+            # Smooth prediction
+            residualloss = residual_loss(residual)
 
             # Cost in Classification phase (True) or Regression phase (False)
-            cost += tf.cond(self._phase, \
-                    lambda: l2loss + loss + deltaloss + 10*tf.nn.l2_loss(residual), \
-                    lambda: l2loss + deltaloss + 10*tf.nn.l2_loss(residual))
-            #cost += l2loss + loss + deltaloss + 10 * tf.nn.l2_loss(residual)
+            cost += total_cost(self._phase, loss, l2loss, deltaloss, residualloss)
 
-            return i+1, sal_box_prob_array, pred_array, cur_viewangle, current_velocity, rnn_output_s, rnn_state_s, rnn_output_r, rnn_state_r, cost, vel_loss
+            return i+1, sal_box_prob_array, pred_array, cur_viewangle, current_velocity, rnn_output_s, rnn_state_s, rnn_output_r, rnn_state_r, cost, tf.reduce_mean(vel_diff)
 
 
         # While loop over self.n_frames

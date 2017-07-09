@@ -54,16 +54,22 @@ def test_all(sess, Agent, is_train):
     for batch_num in range(1,num+1):
         
         # load test_data
-        batch_data, batch_label, batch_y_loc, batch_box_center, batch_inclusion, batch_hof, batch_img, box, gt = load_batch_data(Agent, path, batch_num, True)
+        batch_data, batch_oracle_actions, batch_oracle_viewangle, batch_box_center, batch_hof, batch_img, box, gt = load_batch_data(Agent, path, batch_num, True)
         
-        # NOTE: Change this after feature changed
-        gt = gt[:,:,:2]
 
-        [loss, deltaloss, viewangle_out, sal_box_out] = sess.run([Agent.cost, Agent.delta, Agent.viewangle, Agent.sal_box_prob], 
-                feed_dict={Agent.obj_app: batch_data, Agent.y: batch_label, Agent.y_loc: batch_y_loc, 
-                Agent.box_center: batch_box_center[:,:,:,:Agent.n_output], Agent.inclusion: batch_inclusion, 
-                Agent.hof: batch_hof, Agent.keep_prob:1.0-dropPr, 
-                Agent.init_viewangle: init_viewangle_value, Agent._phase: Agent.bool_two_phase})
+        [loss, deltaloss, viewangle_out, sal_box_out] = sess.run(
+                [Agent.cost, Agent.delta, Agent.viewangle, Agent.sal_box_prob], 
+                feed_dict={
+                    Agent.obj_app: batch_data, 
+                    Agent.oracle_actions: batch_oracle_actions, 
+                    Agent.oracle_viewangle: batch_oracle_viewangle, 
+                    Agent.box_center: batch_box_center, 
+                    Agent.hof: batch_hof, 
+                    Agent.keep_prob:1.0-dropPr, 
+                    Agent.init_viewangle: init_viewangle_value, 
+                    Agent._phase: Agent.bool_two_phase
+                }
+        )
         
         total_loss      += loss/Agent.n_frames #(batch_size*Agent.n_frames)
         total_deltaloss += deltaloss/Agent.n_frames
@@ -72,11 +78,13 @@ def test_all(sess, Agent, is_train):
         viewangle_out[:,:,1] = (viewangle_out[:,:,1]*Agent.H).astype(int)
         
         # NOTE: Use same scale
-        corr = np.sum(np.logical_and(batch_label, sal_box_out))
+        corr = np.sum(np.logical_and(batch_oracle_actions, sal_box_out))
         ac = float(corr) / (Agent.batch_size * Agent.n_frames)
         iu = score(Agent, viewangle_out, gt)
+
         # convert into degree form (* 360 / 1920 / n_frames)
         vd = MVD.batch_vel_diff(viewangle_out) * 0.1875 / (Agent.n_frames)
+        
         acc += ac
         iou += iu
         vel_diff += vd
