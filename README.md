@@ -1,7 +1,7 @@
 
 # Deep 360 Pilot in Tensorflow
 
-Tensorflow implementation of CVPR 2017 Oral paper "Deep 360 Pilot: Learning a Deep Agent for Piloting through 360◦ Sports Videos".
+Official Implementation of CVPR 2017 Oral paper "Deep 360 Pilot: Learning a Deep Agent for Piloting through 360◦ Sports Videos" in Tensorflow.
 
 # Prerequisites
 
@@ -19,21 +19,29 @@ cd Deep360Pilot
 ```
 
 
-
 # Usage
 To train a model with downloaded dataset:
 ```bash
 python main.py --mode train --gpu 0 -d bmx -l 10 -b 16 -p classify --opt Adam
 ```
+Then
+```bash
+python main.py --mode train --gpu 0 -d bmx -l 10 -b 16 -p regress --opt Adam --model checkpoint/bmx_16boxes_lam10.0/bmx_lam1_classify_best_model
+```
 
 To test with an existing model:
 ```bash
-python main.py --mode test --gpu 0 -d bmx -l 10 -b 16 -p classify --model bmx_lam1_classify_best_model
+python main.py --mode test --gpu 0 -d bmx -l 10 -b 16 -p classify --model checkpoint/bmx_16boxes_lam10.0/bmx_lam1_classify_best_model
+```
+Or,
+```bash
+python main.py --mode test --gpu 0 -d bmx -l 10 -b 16 -p regress --model checkpoint/bmx_16boxes_lam10.0/bmx_lam10.0_regress_best_model
 ```
 
 To get prediction with an existing model:
 ```bash
-python main.py --mode pred --model bmx_lam10.0_regress_best_model --gpu 0 -d bmx -l 10 -b 16 -p regress -n zZ6FlZRLvek_6
+python main.py --mode pred --model checkpoint/bmx_16boxes_lam10.0/bmx_lam10.0_regress_best_model --gpu 0 -d bmx -l 10 -b 16 -p regress -n zZ6FlZRLvek_6
+```
 
 ## Author
 

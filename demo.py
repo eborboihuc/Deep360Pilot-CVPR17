@@ -35,7 +35,7 @@ def video_base(Agent, vid_domain, vid_name):
     print "Found {} clips in {}".format(n_clips, FEATURE_PATH)
 
     # n_clips - 1 since we drop last batch which may contain null data.
-    n_clips = n_clips - 1
+    #n_clips = n_clips - 1
     
     # Initial Session
     with tf.Session(config = Agent.sess_config) as sess:
@@ -48,7 +48,7 @@ def video_base(Agent, vid_domain, vid_name):
         saver = tf.train.Saver()
         
         # Load model and continue
-        if Agent.restore_path and os.path.isdir(Agent.save_path):
+        if Agent.restore_path and tf.train.checkpoint_exists(Agent.restore_path):
             saver.restore(sess, Agent.restore_path)
             print "Your model restored!!!"
         else:
@@ -61,17 +61,17 @@ def video_base(Agent, vid_domain, vid_name):
         for count in xrange(1, n_clips + 1):
             
             # load test_data
-            #box_center = np.load(os.path.join(FEATURE_PATH, 'divide_area_pruned_boxes{:04d}.npy'.format(count)))
-            box_center = np.load(os.path.join(FEATURE_PATH, 'roislist{:04d}.npy'.format(count)))
-            #roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'pruned_roisavg{:04d}.npy'.format(count)))
-            roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'roisavg{:04d}.npy'.format(count)))
+            box_center = np.load(os.path.join(FEATURE_PATH, 'divide_area_pruned_boxes{:04d}.npy'.format(count)))
+            #box_center = np.load(os.path.join(FEATURE_PATH, 'roislist{:04d}.npy'.format(count)))
+            roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'pruned_roisavg{:04d}.npy'.format(count)))
+            #roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'roisavg{:04d}.npy'.format(count)))
             hof_batch = np.load(os.path.join(FEATURE_PATH, 'hof{:04d}.npy'.format(count)))
 
             box_center = np.tile(np.expand_dims(box_center, 0), [Agent.batch_size, 1, 1, 1])
             roisavg_batch = np.tile(np.expand_dims(roisavg_batch, 0), [Agent.batch_size, 1, 1, 1])
             hof_batch = np.tile(np.expand_dims(hof_batch, 0), [Agent.batch_size, 1, 1, 1])
             
-            oracle_viewangle_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_output+1])
+            oracle_viewangle_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_output])
             one_hot_label_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_detection])
             #one_hot_label = np.load(os.path.join(FEATURE_PATH, 'onehot{:04d}.npy'.format(count)))
             #one_hot_label_batch = np.tile(np.expand_dims(one_hot_label, 0), [Agent.batch_size, 1, 1])
@@ -158,10 +158,16 @@ def video_base(Agent, vid_domain, vid_name):
 
         if Agent._save_pred:
             print view_trajectory.shape
-            out_path = Agent.save_path + vid_name 
-            print "Save prediction of vid {} to {}".format(vid_name, Agent.save_path)
-            np.save(out_path + "_{}_{}_lam{}_{}_best_model".format(Agent.domain, Agent.n_detection, Agent.regress_lmbda, Agent.two_phase), view_trajectory)
-            with open(out_path + "_{}_{}_lam{}_{}_best_model".format(Agent.domain, Agent.n_detection, Agent.regress_lmbda, Agent.two_phase) + '.txt', 'w') as f:
+            out_path = '{}{}_{}_{}_lam{}_{}_best_model'.format(
+                    Agent.save_path, 
+                    vid_name, 
+                    Agent.domain, 
+                    Agent.n_detection, 
+                    Agent.regress_lmbda, 
+                    Agent.two_phase) 
+            print "Save prediction of vid {} to {}".format(vid_name, out_path)
+            np.save(out_path, view_trajectory)
+            with open(out_path + '.txt', 'w') as f:
                 f.write("Loss = {:.5f}\n".format(total_loss/n_clips))
                 f.write("DeltaLoss = {:.5f}\n".format(total_deltaloss/n_clips))
                 f.write("IOU = {:.5f}\n".format(iou/n_clips))

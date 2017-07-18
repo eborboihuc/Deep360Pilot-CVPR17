@@ -21,7 +21,7 @@ def test(Agent):
         saver = tf.train.Saver()
         
         # Load model and continue
-        if Agent.restore_path and os.path.isdir(Agent.save_path):
+        if Agent.restore_path and tf.train.checkpoint_exists(Agent.restore_path):
             saver.restore(sess, Agent.restore_path)
             print "Your model restored!!!"
             test_all(sess, Agent, is_train=True)
