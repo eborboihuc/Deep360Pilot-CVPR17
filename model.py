@@ -218,7 +218,7 @@ class Deep360Pilot(object):
             O_t = tf.reshape(O_t, [self.batch_size, self.n_detection, self.n_hidden]) # (n_batch, n_det, n_input)
             
             # Object level Feature
-            V_t = tf.concat(2, [O_t, relative_position, M_t]) # (n_batch, n_det, n_hidden+n_output+n_bin_size)
+            V_t = tf.concat(axis=2, values=[O_t, relative_position, M_t]) # (n_batch, n_det, n_hidden+n_output+n_bin_size)
 
             #####################
             #   Selector RNN    #
@@ -240,7 +240,7 @@ class Deep360Pilot(object):
             # Soft attention : alphas
             alphas = tf.div(e, tf.expand_dims(denomin, 1)) # (n_batch, n_det)
             
-            attention_list = tf.mul(tf.expand_dims(alphas, 2), V_t) # (n_batch, n_det, n_hidden+self.n_output+self.n_bin_size)
+            attention_list = tf.multiply(tf.expand_dims(alphas, 2), V_t) # (n_batch, n_det, n_hidden+self.n_output+self.n_bin_size)
             attention = tf.matmul(tf.reshape(attention_list, [-1, self.n_hidden+self.n_output+self.n_bin_size]), self.weights['onebox']) # (n_batch * n_det, n_onebox)
             attention = tf.reshape(attention, [self.batch_size, self.n_hidden]) # (n_batch, n_hidden)
 
@@ -255,13 +255,13 @@ class Deep360Pilot(object):
             amax = tf.argmax(tf.nn.log_softmax(sal_box_prob), 1) # n_batch
             amaxDense = tf.one_hot(amax, self.n_detection, 1.0, 0.0, 1) # (n_batch, n_det)
             amaxDenseBatch = tf.expand_dims(amaxDense, 2) # (n_batch, n_det, 1)
-            cur_select_angle = tf.reduce_sum(tf.mul(P_t, amaxDenseBatch), 1) # (n_batch, n_output)
-            cur_object_motion = tf.reduce_sum(tf.mul(M_t, amaxDenseBatch), 1) # (n_batch, n_bin_size)
+            cur_select_angle = tf.reduce_sum(tf.multiply(P_t, amaxDenseBatch), 1) # (n_batch, n_output)
+            cur_object_motion = tf.reduce_sum(tf.multiply(M_t, amaxDenseBatch), 1) # (n_batch, n_bin_size)
             
             # Zero box location handle: Add prev_viewangle at where predloc is zero
             zero_box = tf.reduce_sum(cur_select_angle, 1) # n_batch
             zero_box_mask = tf.expand_dims(tf.cast(tf.equal(zero_box, 0.0), tf.float32), 1) # (n_batch, 1)
-            cur_select_angle = cur_select_angle + tf.mul(prev_viewangle, zero_box_mask) # (n_batch, n_output)
+            cur_select_angle = cur_select_angle + tf.multiply(prev_viewangle, zero_box_mask) # (n_batch, n_output)
 
             #####################
             #   Regressor RNN   #
@@ -271,7 +271,7 @@ class Deep360Pilot(object):
             displacement = tf_dist_360(cur_select_angle, prev_viewangle, 1) # (n_batch, n_output)
             disp_inc = tf_360_shortest_dist(prev_velocity + displacement)
             mov_coef = tf_mov_coef(prev_velocity, displacement)
-            reg_input = tf.concat(1, [disp_inc, cur_object_motion]) # (n_batch, n_output+n_bin_size)
+            reg_input = tf.concat(axis=1, values=[disp_inc, cur_object_motion]) # (n_batch, n_output+n_bin_size)
             with tf.variable_scope('Regressor'):
                 rnn_output_r, rnn_state_r = self.rnn_cell_r(reg_input, prev_rnn_state_r)
             
@@ -333,8 +333,8 @@ class Deep360Pilot(object):
                     )
         )
         
-        #self.sal_box_prob = tf.transpose(sal_box_prob.pack(), [1, 0, 2]) # sal_box_prob
-        self.sal_box_prob = tf.transpose(sal_box_prob.pack(), [1, 0, 2]) # amaxDense
-        self.viewangle = tf.transpose(viewangle.pack(), [1, 0, 2])
+        #self.sal_box_prob = tf.transpose(sal_box_prob.stack(), [1, 0, 2]) # sal_box_prob
+        self.sal_box_prob = tf.transpose(sal_box_prob.stack(), [1, 0, 2]) # amaxDense
+        self.viewangle = tf.transpose(viewangle.stack(), [1, 0, 2])
 
 
