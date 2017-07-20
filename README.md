@@ -3,6 +3,8 @@
 
 Official Implementation of CVPR 2017 Oral paper "Deep 360 Pilot: Learning a Deep Agent for Piloting through 360◦ Sports Videos" in Tensorflow.
 
+![](https://user-images.githubusercontent.com/7057863/28415179-980e0d34-6d1c-11e7-87ae-8d190f7cdd2f.gif)
+
 # Prerequisites
 
 - Linux
