@@ -35,7 +35,7 @@ def video_base(Agent, vid_domain, vid_name):
     print "Found {} clips in {}".format(n_clips, FEATURE_PATH)
 
     # n_clips - 1 since we drop last batch which may contain null data.
-    #n_clips = n_clips - 1
+    n_clips = n_clips - 1
     
     # Initial Session
     with tf.Session(config = Agent.sess_config) as sess:
@@ -62,9 +62,7 @@ def video_base(Agent, vid_domain, vid_name):
             
             # load test_data
             box_center = np.load(os.path.join(FEATURE_PATH, 'divide_area_pruned_boxes{:04d}.npy'.format(count)))
-            #box_center = np.load(os.path.join(FEATURE_PATH, 'roislist{:04d}.npy'.format(count)))
             roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'pruned_roisavg{:04d}.npy'.format(count)))
-            #roisavg_batch = np.load(os.path.join(FEATURE_PATH, 'roisavg{:04d}.npy'.format(count)))
             hof_batch = np.load(os.path.join(FEATURE_PATH, 'hof{:04d}.npy'.format(count)))
 
             box_center = np.tile(np.expand_dims(box_center, 0), [Agent.batch_size, 1, 1, 1])
@@ -73,8 +71,6 @@ def video_base(Agent, vid_domain, vid_name):
             
             oracle_viewangle_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_output])
             one_hot_label_batch = np.zeros([Agent.batch_size, Agent.n_frames, Agent.n_detection])
-            #one_hot_label = np.load(os.path.join(FEATURE_PATH, 'onehot{:04d}.npy'.format(count)))
-            #one_hot_label_batch = np.tile(np.expand_dims(one_hot_label, 0), [Agent.batch_size, 1, 1])
 
             box = box_center.copy()
             gt = oracle_viewangle_batch.copy()

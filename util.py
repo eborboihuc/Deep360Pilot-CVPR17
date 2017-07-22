@@ -73,19 +73,15 @@ def load_batch_data(Agent, path, num_batch, _copy=False, _augment=False):
     """ Load batch data from path and normalize them, use copy to preserve raw data """
     
     data = np.load(join(path, 'pruned_roisavg/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:Agent.n_input]
-    #data = np.load(join(path, 'roisavg/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:Agent.n_input]
     
     oracle_viewangle = np.load(join(path, 'label/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_classes+1]
     
     one_hot_labels = np.load(join(path, 'onehot/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection]
-    #one_hot_labels = np.zeros((Agent.batch_size, Agent.n_frames, Agent.n_detection), dtype=np.float16)
     
     hof = np.load(join(path, 'hof/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:Agent.n_bin_size]
     
     box_center = np.load(join(path, 'divide_area_pruned_boxes/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:]
-    #box_center = np.load(join(path, 'roislist/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size,0:Agent.n_frames,0:Agent.n_detection,0:]
     
-    #img = np.load(join(path, 'batch_clips/batch_{}.npy'.format(num_batch))) #[0:Agent.batch_size]
     img = np.zeros((Agent.batch_size), dtype=np.float16)
 
     if _augment is True:
@@ -109,7 +105,10 @@ def load_batch_data(Agent, path, num_batch, _copy=False, _augment=False):
 
 
 def visual_gaze(Agent, img_name, gt, pred, alphas, box):
-    """ Draw and plot visual gaze contains boxes, gt gazes, and prediction """
+    """
+        [Deprecated]
+        Draw and plot visual gaze contains boxes, gt gazes, and prediction 
+    """
     print Agent.img_path + img_name + '.jpg'
     img = cv2.imread(Agent.img_path + img_name + '.jpg',3)
     
