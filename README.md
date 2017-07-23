@@ -45,7 +45,7 @@ To get prediction with an existing model:
 python main.py --mode pred --model checkpoint/bmx_16boxes_lam10.0/bmx_lam10.0_regress_best_model --gpu 0 -d bmx -l 10 -b 16 -p regress -n zZ6FlZRLvek_6
 ```
 
-## Trained Model
+## Pre-trained Model
 Please download the trained model [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjNWdFbnVYbG9kNm8).
 
 ## Author
