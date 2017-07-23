@@ -47,6 +47,7 @@ python main.py --mode pred --model checkpoint/bmx_16boxes_lam10.0/bmx_lam10.0_re
 
 ## Pre-trained Model
 Please download the trained model [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjNWdFbnVYbG9kNm8).
+You can use `--model {model_path}` in `main.py` to load the model. 
 
 ## Author
 
