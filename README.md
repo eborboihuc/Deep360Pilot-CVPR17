@@ -14,11 +14,23 @@ Official Implementation of CVPR 2017 Oral paper "Deep 360 Pilot: Learning a Deep
 
 
 ## Getting Started
+- Change the version:
+We provide both `0.12` and `1.2.1` version of Tensorflow implementation
+You may choose the ideal version to use
+
 - Clone this repo:
 ```bash
 git clone git@github.com:eborboihuc/Deep360Pilot.git
-cd Deep360Pilot
+cd Deep360Pilot/misc
+
+git clone git@github.com:yenchenlin/Deep360Pilot-optical-flow.git
 ```
+- Download our [pre-trained model](#pre-trained-model)
+After run the scripts
+```bash
+python require.py
+```
+You can download the model and place it under `./data`
 
 
 # Usage
@@ -44,7 +56,6 @@ To get prediction with an existing model:
 ```bash
 python main.py --mode pred --model checkpoint/bmx_16boxes_lam10.0/bmx_lam10.0_regress_best_model --gpu 0 -d bmx -l 10 -b 16 -p regress -n zZ6FlZRLvek_6
 ```
-
 ## Pre-trained Model
 Please download the trained model [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjNWdFbnVYbG9kNm8).
 You can use `--model {model_path}` in `main.py` to load the model. 
