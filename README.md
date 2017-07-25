@@ -35,13 +35,13 @@ cd Deep360Pilot/misc
 
 git clone git@github.com:yenchenlin/Deep360Pilot-optical-flow.git
 ```
-- Download our [pre-trained model](#pre-trained-model)
+- Download our [dataset](#dataset) and [pre-trained model](#pre-trained-model)
 
 After run the scripts
 ```bash
 python require.py
 ```
-You can download the model and place it under `./data`
+You can download our model and dataset and place it under `./checkpoint` and `./data`, respectively.
 
 
 # Usage
@@ -71,6 +71,10 @@ python main.py --mode pred --model checkpoint/bmx_16boxes_lam10.0/bmx_lam10.0_re
 ## Pre-trained Model
 Please download the trained model [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjNWdFbnVYbG9kNm8).
 You can use `--model {model_path}` in `main.py` to load the model. 
+
+## Dataset
+If you want to test on our dataset, please download the dataset [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjWnF3LV9WUXdZMzA) and place it under `./data`.
+You can use code from [here](https://yenchenlin/Deep360Pilt-optical-flow) to convert it to our input format.
 
 ## Author
 Hou-Ning Hu / [@eborboihuc](https://eborboihuc.github.io/) and Yen-Chen Lin / [@yenchenlin](https://yclin.me)
