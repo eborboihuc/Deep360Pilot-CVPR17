@@ -1,5 +1,5 @@
 
-# Deep 360 Pilot: Learning a Deep Agent for Piloting through 360° Sports Video
+# Deep 360 Pilot: Learning a Deep Agent for Piloting through 360° Sports Videos
 
 Hou-Ning Hu\*, Yen-Chen Lin\*, Ming-Yu Liu, Hsien-Tzu Cheng, Yung-Ju Chang, Min Sun
 (\*indicate equal contribution)
@@ -23,7 +23,7 @@ Paper: [High resolution](https://drive.google.com/file/d/0B2dg5RanEUBQRkJYZDc1Mm
 
 
 ## Getting Started
-- Change the version:
+- Change the version you like:
 
   We provide both `0.12` and `1.2.1` version of Tensorflow implementation
 You may choose the ideal version to use
