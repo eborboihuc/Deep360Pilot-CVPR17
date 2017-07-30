@@ -29,11 +29,13 @@ Paper: [High resolution](https://drive.google.com/file/d/0B2dg5RanEUBQRkJYZDc1Mm
 You may choose the ideal version to use
 
 - Clone [this](https://github.com/eborboihuc/Deep360Pilot-CVPR17) repo and [another](https://github.com/yenchenlin/Deep360Pilot-optical-flow) for formating the input data:
+
 ```bash
-git clone git@github.com:eborboihuc/Deep360Pilot-CVPR17.git
+git clone http://github.com/eborboihuc/Deep360Pilot-CVPR17.git
+
 cd Deep360Pilot/misc
 
-git clone git@github.com:yenchenlin/Deep360Pilot-optical-flow.git
+git clone http://github.com/yenchenlin/Deep360Pilot-optical-flow.git
 ```
 - Download our [dataset](#dataset) and [pre-trained model](#pre-trained-model)
 
@@ -41,7 +43,7 @@ After run the scripts
 ```bash
 python require.py
 ```
-You can download our model and dataset and place it under `./checkpoint` and `./data`, respectively.
+Please download our model and dataset and place it under `./checkpoint` and `./data`, respectively.
 
 
 # Usage
@@ -73,13 +75,21 @@ Please download the trained model [here](https://drive.google.com/uc?export=down
 You can use `--model {model_path}` in `main.py` to load the model. 
 
 ## Dataset
-If you want to test on our dataset, please download the dataset [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjWnF3LV9WUXdZMzA) and place it under `./data`.
-You can use code from [here](https://github.com/yenchenlin/Deep360Pilot-optical-flow) to convert it to our input format.
 
-## Author
+### Pipeline testing
+We provide a small testing clip-based datafile. Please download it [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjaTNPYUk4NkM0UDA). And you can use this toy datafile to go though our data process pipeline.
+
+### Testing on our *batch-based dataset* for accuracy and smoothness
+If you want to reproduce the results on our dataset, please download the dataset [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjWnF3LV9WUXdZMzA) and place it under `./data`.
+
+### Testing on our *clip-based dataset* for generating trajectories
+Please download the *clip-based dataset* [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjZzJkZnNLZW1BNE0)
+And then use code from [here](https://github.com/yenchenlin/Deep360Pilot-optical-flow) to convert it to our input format.
+
+# Author
 Hou-Ning Hu / [@eborboihuc](https://eborboihuc.github.io/) and Yen-Chen Lin / [@yenchenlin](https://yclin.me)
 
-## Cite
+# Cite
 If you find our code useful for your research, please cite
 ```bibtex
 @InProceedings{Hu_2017_CVPR,
