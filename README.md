@@ -80,7 +80,7 @@ You can use `--model {model_path}` in `main.py` to load the model.
 We provide a small testing clip-based datafile. Please download it [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjaTNPYUk4NkM0UDA). And you can use this toy datafile to go though our data process pipeline.
 
 ### Testing on our *batch-based dataset* for accuracy and smoothness
-If you want to reproduce the results on our dataset, please download the dataset [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjZzJkZnNLZW1BNE0) and place it under `./data`.
+If you want to reproduce the results on our dataset, please download the dataset [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjZzJkZnNLZW1BNE0), label [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjUXZNQ3cwM245enM) and place it under `./data`.
 
 ### Testing on our *clip-based dataset* for generating trajectories
 Please download the *clip-based dataset* [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjWnF3LV9WUXdZMzA)

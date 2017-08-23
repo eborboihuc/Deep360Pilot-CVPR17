@@ -27,5 +27,7 @@ print show.format(**{'ID': '0B9wE6h4m--wjWnF3LV9WUXdZMzA', 'LOCAL_FILE_NAME': 'd
 #os.system(cmd.format(**{'ID': '0B9wE6h4m--wjWnF3LV9WUXdZMzA', 'LOCAL_FILE_NAME': 'data/Deep360Pilot-feature.zip'}))
 print show.format(**{'ID': '0B9wE6h4m--wjZzJkZnNLZW1BNE0', 'LOCAL_FILE_NAME': 'data/Deep360Pilot-batch-feature.zip'})
 #os.system(cmd.format(**{'ID': '0B9wE6h4m--wjZzJkZnNLZW1BNE0', 'LOCAL_FILE_NAME': 'data/Deep360Pilot-batch-feature.zip'}))
+print show.format(**{'ID': '0B9wE6h4m--wjUXZNQ3cwM245enM', 'LOCAL_FILE_NAME': 'data/Deep360Pilot-batch-label.zip'})
+#os.system(cmd.format(**{'ID': '0B9wE6h4m--wjUXZNQ3cwM245enM', 'LOCAL_FILE_NAME': 'data/Deep360Pilot-batch-label.zip'}))
 print show.format(**{'ID': '0B9wE6h4m--wjSXVYblBWNktacFk', 'LOCAL_FILE_NAME': 'data/Deep360Pilot-label.zip'})
 #os.system(cmd.format(**{'ID': '0B9wE6h4m--wjSXVYblBWNktacFk', 'LOCAL_FILE_NAME': 'data/Deep360Pilot-label.zip'}))
