@@ -1,12 +1,12 @@
 
 # Deep 360 Pilot: Learning a Deep Agent for Piloting through 360° Sports Videos
 
-Hou-Ning Hu\*, Yen-Chen Lin\*, Ming-Yu Liu, Hsien-Tzu Cheng, Yung-Ju Chang, Min Sun
+[Hou-Ning Hu](https://eborboihuc.github.io/)\*, [Yen-Chen Lin](http://yclin.me/)\*, [Ming-Yu Liu](http://mingyuliu.net/), [Hsien-Tzu Cheng](https://hsientzucheng.github.io/), [Yung-Ju Chang](http://people.cs.nctu.edu.tw/~armuro/), [Min Sun](http://aliensunmin.github.io/)
 (\*indicate equal contribution)
 
-IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2017 (oral presentation)
+IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2017 **(Oral presentation)**
 
-Official Implementation of CVPR 2017 Oral paper "Deep 360 Pilot: Learning a Deep Agent for Piloting through 360◦ Sports Videos" in Tensorflow.
+Official Implementation of CVPR 2017 Oral paper "[Deep 360 Pilot: Learning a Deep Agent for Piloting through 360◦ Sports Videos](https://aliensunmin.github.io/project/360video/)" in Tensorflow.
 
 ![](https://user-images.githubusercontent.com/7057863/28415179-980e0d34-6d1c-11e7-87ae-8d190f7cdd2f.gif)
 
@@ -39,7 +39,7 @@ git clone http://github.com/yenchenlin/Deep360Pilot-optical-flow.git
 ```
 - Download our [dataset](#dataset) and [pre-trained model](#pre-trained-model)
 
-After run the scripts
+After run the scripts you will see multiple links
 ```bash
 python require.py
 ```
@@ -71,7 +71,7 @@ python main.py --mode pred --model checkpoint/bmx_16boxes_lam10.0/bmx_lam10.0_re
 ```
 
 ## Pre-trained Model
-Please download the trained model [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjNWdFbnVYbG9kNm8).
+Please download the trained model for TensorFlow v1.2.1 [here](https://drive.google.com/uc?export=download&id=0B9wE6h4m--wjNWdFbnVYbG9kNm8).
 You can use `--model {model_path}` in `main.py` to load the model. 
 
 ## Dataset

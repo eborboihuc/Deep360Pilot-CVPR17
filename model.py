@@ -31,8 +31,8 @@ class Deep360Pilot(object):
         self.restore_path       = join(flag.root_path, flag.model_path) if flag.model_path else None
     
         # Batch Number
-        self.train_num          = len(glob(join(self.train_path, 'roisavg/*.npy'))) 
-        self.test_num           = len(glob(join(self.test_path, 'roisavg/*.npy')))
+        self.train_num          = len(glob(join(self.train_path, 'pruned_roisavg/*.npy'))) 
+        self.test_num           = len(glob(join(self.test_path, 'pruned_roisavg/*.npy')))
         assert self.train_num   > 0 or flag.mode not in ['train', 'test'], "Found 0 files in {}".format(self.train_path)
         assert self.test_num    > 0 or flag.mode not in ['train', 'test'], "Found 0 files in {}".format(self.test_path)
 
